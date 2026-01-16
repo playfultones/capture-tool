@@ -1,0 +1,101 @@
+/* Startup modal and other modal styles */
+
+/* Startup Modal */
+.startup-content {
+    background-color: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+}
+
+.startup-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
+}
+
+.startup-logo {
+    width: 70%;
+    height: auto;
+    object-fit: contain;
+    margin-bottom: 0.75rem;
+}
+
+.startup-header h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+    text-align: center;
+    width: 100%;
+}
+
+.startup-body {
+    margin-top: 1rem;
+}
+
+.startup-message {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+.startup-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.btn-startup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-startup:hover {
+    background-color: var(--bg-primary);
+    border-color: var(--accent);
+}
+
+.btn-startup:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+}
+
+.btn-startup-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.btn-startup-label {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.btn-startup-hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+/* Project Actions Section (Open/Save) */
+.project-actions-section {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 0.5rem;
+}

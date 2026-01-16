@@ -1,0 +1,850 @@
+/* Capture section - matrix, controls, list, progress, current capture display */
+
+/* Output Folder Section */
+.output-folder-section {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.output-folder-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.output-folder-display {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+.output-folder-path {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-style: italic;
+}
+
+.output-folder-display.has-folder .output-folder-path {
+    color: var(--text-primary);
+    font-style: normal;
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    font-size: 0.8125rem;
+}
+
+.output-folder-error {
+    margin-top: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+    color: var(--error);
+    background-color: rgba(248, 113, 113, 0.1);
+    border-radius: 4px;
+}
+
+.output-folder-error.hidden {
+    display: none;
+}
+
+/* Capture Settings */
+.capture-settings {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Capture Content */
+.capture-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* Capture Progress */
+.capture-progress-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.capture-progress-bar {
+    height: 8px;
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.capture-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent-hover) 100%);
+    border-radius: 4px;
+    transition: width 100ms ease-out;
+    width: 0%;
+}
+
+.capture-status.recording + .capture-progress-container .capture-progress-fill {
+    background: linear-gradient(90deg, var(--error) 0%, #ff6b6b 100%);
+}
+
+.capture-time-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.capture-time-separator {
+    color: var(--text-secondary);
+    opacity: 0.5;
+}
+
+/* Capture Controls */
+.capture-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-capture {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background-color: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    font-weight: 500;
+}
+
+.btn-capture:hover:not(:disabled) {
+    background-color: var(--accent-hover);
+}
+
+.btn-capture:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.4);
+}
+
+.btn-capture:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-abort {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background-color: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    font-weight: 500;
+}
+
+.btn-abort:hover:not(:disabled) {
+    background-color: rgba(248, 113, 113, 0.25);
+}
+
+.btn-abort:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.3);
+}
+
+.btn-abort:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.capture-complete-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1rem;
+    background-color: rgba(74, 222, 128, 0.15);
+    border: 1px solid var(--success);
+    border-radius: 4px;
+    color: var(--success);
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-top: 0.5rem;
+}
+
+.capture-complete-indicator::before {
+    content: '>';
+    font-weight: bold;
+}
+
+/* Capture Matrix Section */
+.capture-controls-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.capture-controls-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.capture-controls-title {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.capture-controls-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 60px;
+}
+
+.empty-controls-message {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-style: italic;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+.empty-controls-message.hidden {
+    display: none;
+}
+
+/* Individual Control Item */
+.capture-control-item {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto auto;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.625rem 0.75rem;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    transition: border-color 0.15s ease;
+}
+
+.capture-control-item:hover {
+    border-color: var(--text-secondary);
+}
+
+.control-name-input {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    min-width: 100px;
+}
+
+.control-name-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.control-name-input::placeholder {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.control-type-select {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23a0a0a0' d='M5 7L1 3h8z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    padding-right: 1.5rem;
+    min-width: 100px;
+}
+
+.control-type-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.control-values-input {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    min-width: 140px;
+}
+
+.control-values-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.control-values-input::placeholder {
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 0.75rem;
+}
+
+.control-value-count {
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    min-width: 50px;
+    text-align: center;
+    padding: 0.25rem 0.5rem;
+    background-color: var(--bg-primary);
+    border-radius: 3px;
+}
+
+/* Capture Count Display */
+.capture-count-display {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    margin-top: 0.5rem;
+}
+
+.capture-count-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.capture-count-value {
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.capture-count-value.warning {
+    color: #f59e0b;
+}
+
+.capture-count-value.error {
+    color: var(--error);
+}
+
+/* Responsive adjustments for control items */
+@media (max-width: 640px) {
+    .capture-control-item {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto auto;
+    }
+    
+    .control-name-input {
+        grid-column: 1 / 2;
+    }
+    
+    .control-type-select {
+        grid-column: 2 / 3;
+    }
+    
+    .control-values-input {
+        grid-column: 1 / 3;
+    }
+    
+    .control-value-count {
+        grid-column: 1 / 2;
+    }
+    
+    .btn-remove-control {
+        grid-column: 2 / 3;
+        justify-self: end;
+    }
+}
+
+/* Capture List Actions */
+.capture-list-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+/* Capture List Progress */
+.capture-list-progress {
+    display: flex;
+    align-items: center;
+}
+
+.capture-list-progress-text {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+}
+
+.capture-list-count {
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    padding: 0.25rem 0.5rem;
+    background-color: var(--bg-tertiary);
+    border-radius: 3px;
+}
+
+.capture-list-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Capture List Table */
+.capture-list-table-wrapper {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.capture-list-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+
+.capture-list-table thead {
+    position: sticky;
+    top: 0;
+    background-color: var(--bg-tertiary);
+    z-index: 1;
+}
+
+.capture-list-table th {
+    text-align: left;
+    padding: 0.625rem 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.capture-list-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.capture-list-table tbody tr {
+    cursor: pointer;
+}
+
+.capture-list-table tbody tr:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.capture-list-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Current capture row highlight */
+.capture-list-table tbody tr.current-capture-row {
+    background-color: rgba(74, 158, 255, 0.15);
+    border-left: 3px solid var(--accent);
+}
+
+.capture-list-table tbody tr.current-capture-row:hover {
+    background-color: rgba(74, 158, 255, 0.2);
+}
+
+/* Table column widths */
+.capture-list-table .col-index {
+    width: 50px;
+    text-align: center;
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    color: var(--text-secondary);
+}
+
+.capture-list-table .col-status {
+    width: 90px;
+}
+
+.capture-list-table .col-control {
+    min-width: 80px;
+}
+
+/* Status badges for capture list */
+.capture-list-table .status-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.capture-list-table .status-badge.status-pending {
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.capture-list-table .status-badge.status-recording {
+    background-color: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+    animation: pulse-recording 1s ease-in-out infinite;
+}
+
+.capture-list-table .status-badge.status-complete {
+    background-color: rgba(74, 222, 128, 0.15);
+    color: var(--success);
+}
+
+.capture-list-table .status-badge.status-failed {
+    background-color: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+}
+
+@keyframes pulse-recording {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Capture View Panel */
+.capture-view-panel {
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(74, 158, 255, 0.05) 100%);
+    border: 2px solid var(--accent);
+}
+
+/* Current Capture Display (inside Capture View) */
+.current-capture-display {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+/* No Capture List Message */
+.no-capture-list-message {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-secondary);
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.no-capture-list-message p {
+    margin: 0;
+}
+
+.no-capture-list-message .hint {
+    font-size: 0.8125rem;
+    margin-top: 0.5rem;
+    font-style: italic;
+}
+
+.current-capture-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.current-capture-number {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.current-capture-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+.current-capture-index {
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+}
+
+.current-capture-total {
+    font-size: 1rem;
+    color: var(--text-secondary);
+}
+
+.current-capture-total span {
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+}
+
+.current-capture-status {
+    display: flex;
+    align-items: center;
+}
+
+.capture-status-badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.375rem 0.75rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.capture-status-badge.status-pending {
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.capture-status-badge.status-recording {
+    background-color: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+    animation: pulse-badge 1s ease-in-out infinite;
+}
+
+.capture-status-badge.status-complete {
+    background-color: rgba(74, 222, 128, 0.15);
+    color: var(--success);
+}
+
+@keyframes pulse-badge {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+/* Current Capture Settings Grid */
+.current-capture-settings {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.current-capture-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 1.5rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Individual Control Setting Card */
+.capture-setting-card {
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.capture-setting-name {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+.capture-setting-value {
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.2;
+    word-break: break-word;
+}
+
+/* Larger cards for fewer controls */
+@media (min-width: 480px) {
+    .current-capture-settings.few-controls {
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    }
+    
+    .few-controls .capture-setting-value {
+        font-size: 1.75rem;
+    }
+}
+
+/* Instructions row */
+.current-capture-instructions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.instructions-icon {
+    color: var(--accent);
+    font-weight: bold;
+}
+
+.current-capture-instructions.recording {
+    background-color: rgba(248, 113, 113, 0.1);
+    color: var(--error);
+}
+
+.current-capture-instructions.recording .instructions-icon {
+    color: var(--error);
+}
+
+/* Capture Workflow Controls */
+.capture-workflow-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.btn-confirm-settings {
+    flex: 1;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background-color: rgba(74, 158, 255, 0.15);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    font-weight: 500;
+}
+
+.btn-confirm-settings:hover:not(:disabled) {
+    background-color: rgba(74, 158, 255, 0.25);
+}
+
+.btn-confirm-settings:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.3);
+}
+
+.btn-confirm-settings:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-skip {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-skip:hover:not(:disabled) {
+    background-color: var(--bg-primary);
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+}
+
+.btn-skip:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+}
+
+.btn-skip:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-recapture {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    font-family: inherit;
+    background-color: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid #f59e0b;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.btn-recapture:hover:not(:disabled) {
+    background-color: rgba(245, 158, 11, 0.25);
+}
+
+.btn-recapture:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
+}
+
+.btn-recapture:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Filename Preview */
+.filename-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    overflow: hidden;
+}
+
+.filename-preview-label {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.filename-preview-value {
+    color: var(--text-primary);
+    font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Monaco, 'Courier New', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.filename-preview-value.error {
+    color: var(--error);
+}
+
+.filename-preview-value.warning {
+    color: #f59e0b;
+}

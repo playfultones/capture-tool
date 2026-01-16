@@ -1,0 +1,24 @@
+# Build artifacts
+build/
+cmake-build-*/
+
+# IDE
+.idea/
+.vscode/
+*.xcodeproj/
+*.xcworkspace/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Compiled
+*.o
+*.a
+*.dylib
+
+# Ignore development documents
+docs/*.md
+CLAUDE.md
+.tickets/

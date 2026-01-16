@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reference Capturer</title>
+    <!-- CSS: Split into feature-based modules -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/forms.css">
+    <link rel="stylesheet" href="css/meters.css">
+    <link rel="stylesheet" href="css/audio-setup.css">
+    <link rel="stylesheet" href="css/capture.css">
+    <link rel="stylesheet" href="css/wizard.css">
+    <link rel="stylesheet" href="css/modals.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="header-title-row">
+                <img src="Logo_Transparent.png" alt="Logo" class="header-logo">
+                <h1>Reference Capturer</h1>
+                <div class="project-info" id="project-info">
+                    <span class="project-name" id="project-name">Unsaved Project</span>
+                </div>
+            </div>
+        </header>
+        <main>
+            <!-- ============================================================ -->
+            <!-- AUDIO SETUP SECTION -->
+            <!-- ============================================================ -->
+            <section class="panel collapsible-panel" id="audio-setup">
+                <div class="collapsible-header" id="audio-setup-header">
+                    <div class="collapsible-title-row">
+                        <span class="collapse-icon">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                        <h2>Audio Setup</h2>
+                    </div>
+                </div>
+                
+                <div class="collapsible-content" id="audio-setup-content">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="output-device">Output Device</label>
+                        <select id="output-device" disabled>
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="output-channel">Output Channel</label>
+                        <select id="output-channel" disabled>
+                            <option value="">Select device first</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="input-device">Input Device</label>
+                        <select id="input-device" disabled>
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="input-channel">Input Channel</label>
+                        <select id="input-channel" disabled>
+                            <option value="">Select device first</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="sample-rate">Sample Rate</label>
+                        <select id="sample-rate" disabled>
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="monitor-device-section">
+                    <h3 class="section-heading">Monitor Output</h3>
+                    <div class="form-grid monitor-grid">
+                        <div class="form-group">
+                            <label for="monitor-device">Device</label>
+                            <select id="monitor-device">
+                                <option value="">None (disabled)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="monitor-channel">Channel</label>
+                            <select id="monitor-channel" disabled>
+                                <option value="">Select device first</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="levels-section">
+                    <h3 class="section-heading">Levels</h3>
+                    
+                    <div class="meter-group">
+                        <div class="meter-label-row">
+                            <button class="monitor-toggle" id="monitor-output-btn" title="Monitor output signal" disabled>
+                                <svg class="monitor-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+                                </svg>
+                            </button>
+                            <label>Output Level</label>
+                        </div>
+                        <div class="meter-container">
+                            <div class="meter-bar">
+                                <div class="meter-fill meter-rms" id="output-rms-bar"></div>
+                                <div class="meter-fill meter-peak" id="output-peak-bar"></div>
+                            </div>
+                            <div class="meter-values">
+                                <span class="meter-value" id="output-rms-value">-inf</span>
+                                <span class="meter-label">RMS</span>
+                                <span class="meter-value" id="output-peak-value">-inf</span>
+                                <span class="meter-label">Peak</span>
+                            </div>
+                        </div>
+                        <div class="gain-trim-control">
+                            <label for="output-gain-trim">Output Trim</label>
+                            <input type="range" id="output-gain-trim" min="-12" max="12" step="0.1" value="0">
+                            <span class="gain-trim-value" id="output-gain-trim-value">0.0 dB</span>
+                        </div>
+                        <div class="trim-warning hidden" id="output-trim-warning">
+                            Output level hot - consider reducing trim
+                        </div>
+                    </div>
+                    
+                    <div class="meter-group">
+                        <div class="meter-label-row">
+                            <button class="monitor-toggle" id="monitor-input-btn" title="Monitor input signal" disabled>
+                                <svg class="monitor-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+                                </svg>
+                            </button>
+                            <label>Input Level</label>
+                        </div>
+                        <div class="meter-container">
+                            <div class="meter-bar">
+                                <div class="meter-fill meter-rms" id="input-rms-bar"></div>
+                                <div class="meter-fill meter-peak" id="input-peak-bar"></div>
+                            </div>
+                            <div class="meter-values">
+                                <span class="meter-value" id="input-rms-value">-inf</span>
+                                <span class="meter-label">RMS</span>
+                                <span class="meter-value" id="input-peak-value">-inf</span>
+                                <span class="meter-label">Peak</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="monitor-status-section">
+                        <div class="monitor-status-row">
+                            <span class="monitor-headphones-icon">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 1c-4.97 0-9 4.03-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-4v8h3c1.66 0 3-1.34 3-3v-7c0-4.97-4.03-9-9-9z"/>
+                                </svg>
+                            </span>
+                            <span class="monitor-status-label">Monitor:</span>
+                            <span class="monitor-status-indicator" id="monitor-status-indicator">
+                                <span class="monitor-dot"></span>
+                                <span class="monitor-status-text" id="monitor-status-text">Not configured</span>
+                            </span>
+                        </div>
+                        <div class="monitor-meter-container">
+                            <div class="meter-bar">
+                                <div class="meter-fill meter-rms" id="monitor-rms-bar"></div>
+                                <div class="meter-fill meter-peak" id="monitor-peak-bar"></div>
+                            </div>
+                            <div class="meter-values monitor-meter-values">
+                                <span class="meter-value" id="monitor-rms-value">-inf</span>
+                                <span class="meter-label">RMS</span>
+                                <span class="meter-value" id="monitor-peak-value">-inf</span>
+                                <span class="meter-label">Peak</span>
+                            </div>
+                        </div>
+                        <div class="monitor-level-control">
+                            <label for="monitor-level">Level</label>
+                            <input type="range" id="monitor-level" min="-60" max="6" step="0.5" value="-6" disabled>
+                            <span class="monitor-level-value" id="monitor-level-value">-6.0 dB</span>
+                        </div>
+                    </div>
+                    
+                    <div class="test-tone-control">
+                        <button id="test-tone-btn" class="toggle-btn" disabled>
+                            <span class="toggle-indicator"></span>
+                            <span class="toggle-label">Test Tone (1kHz @ -18dBFS)</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="calibration-section">
+                    <div class="calibration-status">
+                        <span id="calibration-status-text">Not calibrated</span>
+                    </div>
+                    <button id="calibrate-btn" class="btn-secondary">
+                        Calibrate...
+                    </button>
+                </div>
+                </div>
+            </section>
+            
+            <!-- ============================================================ -->
+            <!-- SESSION SETTINGS SECTION -->
+            <!-- ============================================================ -->
+            <section class="panel collapsible-panel" id="session-settings">
+                <div class="collapsible-header" id="session-settings-header">
+                    <div class="collapsible-title-row">
+                        <span class="collapse-icon">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                        <h2>Session Settings</h2>
+                    </div>
+                </div>
+                
+                <div class="collapsible-content" id="session-settings-content">
+                <!-- Reference Signal -->
+                <div class="session-subsection">
+                    <h3 class="section-heading">Reference Signal</h3>
+                    <div class="reference-signal-content">
+                        <div class="reference-signal-status" id="reference-signal-status">
+                            <span class="no-signal">No file loaded</span>
+                        </div>
+                        
+                        <div class="reference-signal-controls">
+                            <button id="browse-reference-btn" class="btn-primary">
+                                Browse...
+                            </button>
+                            <button id="play-reference-btn" class="btn-play hidden" disabled>
+                                Play
+                            </button>
+                            <button id="stop-reference-btn" class="btn-stop hidden" disabled>
+                                Stop
+                            </button>
+                            <button id="loop-reference-btn" class="btn-loop hidden">
+                                Loop
+                            </button>
+                            <button id="clear-reference-btn" class="btn-secondary hidden">
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="reference-signal-error hidden" id="reference-signal-error"></div>
+                </div>
+                
+                <!-- Recording Tail & Output Folder -->
+                <div class="session-subsection">
+                    <h3 class="section-heading">Output Settings</h3>
+                    
+                    <div class="session-settings-row">
+                        <div class="form-group inline">
+                            <label for="recording-tail">Recording Tail</label>
+                            <select id="recording-tail">
+                                <option value="0">None (0ms)</option>
+                                <option value="250">250ms</option>
+                                <option value="500" selected>500ms</option>
+                                <option value="1000">1000ms</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="output-folder">Output Folder</label>
+                        <div class="output-folder-row">
+                            <div class="output-folder-display" id="output-folder-display">
+                                <span class="output-folder-path" id="output-folder-path">No folder selected</span>
+                            </div>
+                            <button id="reveal-output-folder-btn" class="btn-icon hidden" title="Reveal in Finder">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                    <path d="M6 1H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3a1 1 0 1 0-2 0v3H3V3h3a1 1 0 0 0 0-2z"/>
+                                    <path d="M14 1a1 1 0 0 0-1-1h-4a1 1 0 1 0 0 2h1.586L6.293 6.293a1 1 0 0 0 1.414 1.414L12 3.414V5a1 1 0 1 0 2 0V1z"/>
+                                </svg>
+                            </button>
+                            <button id="browse-output-folder-btn" class="btn-secondary">
+                                Browse...
+                            </button>
+                        </div>
+                    </div>
+                    <div class="output-folder-error hidden" id="output-folder-error"></div>
+                </div>
+                
+                <!-- Capture Matrix -->
+                <div class="session-subsection">
+                    <h3 class="section-heading">Capture Matrix</h3>
+                    
+                    <div class="capture-controls-container">
+                        <div class="capture-controls-header">
+                            <span class="capture-controls-title">Controls</span>
+                            <button id="add-control-btn" class="btn-add-control">
+                                + Add Control
+                            </button>
+                        </div>
+                        
+                        <div class="capture-controls-list" id="capture-controls-list">
+                            <!-- Controls will be rendered here dynamically -->
+                            <div class="empty-controls-message" id="empty-controls-message">
+                                No controls defined. Add a control to define your capture matrix.
+                            </div>
+                        </div>
+                        
+                        <div class="capture-count-display">
+                            <span class="capture-count-label">Total Captures:</span>
+                            <span class="capture-count-value" id="total-capture-count">0</span>
+                        </div>
+                        
+                        <div class="capture-list-actions">
+                            <button id="generate-list-btn" class="btn-primary" disabled>
+                                Generate List
+                            </button>
+                            <button id="clear-list-btn" class="btn-secondary hidden">
+                                Clear List
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                </div>
+            </section>
+            
+            <!-- ============================================================ -->
+            <!-- CAPTURE LIST SECTION (Collapsible) -->
+            <!-- ============================================================ -->
+            <section class="panel collapsible-panel" id="capture-list-section">
+                <div class="collapsible-header" id="capture-list-header">
+                    <div class="collapsible-title-row">
+                        <span class="collapse-icon" id="capture-list-collapse-icon">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                        <h2>Capture List</h2>
+                        <span class="capture-list-count" id="capture-list-count">0 captures</span>
+                    </div>
+                    <div class="capture-list-progress">
+                        <span class="capture-list-progress-text" id="capture-list-progress-text">0 / 0 complete</span>
+                    </div>
+                </div>
+                
+                <div class="collapsible-content" id="capture-list-content">
+                    <div class="capture-list-table-wrapper">
+                        <table class="capture-list-table" id="capture-list-table">
+                            <thead>
+                                <tr>
+                                    <th class="col-index">#</th>
+                                    <th class="col-status">Status</th>
+                                    <!-- Control columns will be added dynamically -->
+                                </tr>
+                            </thead>
+                            <tbody id="capture-list-tbody">
+                                <!-- Capture rows will be rendered here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="capture-list-empty hidden" id="capture-list-empty">
+                        No captures generated. Configure controls above and click "Generate List".
+                    </div>
+                </div>
+            </section>
+            
+            <!-- ============================================================ -->
+            <!-- CAPTURE VIEW SECTION -->
+            <!-- ============================================================ -->
+            <section class="panel collapsible-panel capture-view-panel" id="capture-view-section">
+                <div class="collapsible-header" id="capture-view-header">
+                    <div class="collapsible-title-row">
+                        <span class="collapse-icon">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                        <h2>Capture</h2>
+                    </div>
+                </div>
+                
+                <div class="collapsible-content" id="capture-view-content">
+                <!-- Current Capture Display -->
+                <div class="current-capture-display hidden" id="current-capture-display">
+                    <div class="current-capture-header">
+                        <div class="current-capture-number">
+                            <span class="current-capture-label">Capture</span>
+                            <span class="current-capture-index" id="current-capture-index">1</span>
+                            <span class="current-capture-total">of <span id="current-capture-total">1</span></span>
+                        </div>
+                        <div class="current-capture-status">
+                            <span class="capture-status-badge" id="current-capture-status-badge">Ready</span>
+                        </div>
+                    </div>
+                    
+                    <div class="current-capture-settings" id="current-capture-settings">
+                        <!-- Control values will be rendered dynamically -->
+                        <div class="current-capture-empty">
+                            No capture selected
+                        </div>
+                    </div>
+                    
+                    <div class="current-capture-instructions">
+                        <span class="instructions-icon">*</span>
+                        <span class="instructions-text">Dial in the settings above on your hardware, then start capture</span>
+                    </div>
+                    
+                    <div class="capture-workflow-controls">
+                        <button id="skip-capture-btn" class="btn-skip hidden">
+                            Skip
+                        </button>
+                        <button id="recapture-btn" class="btn-recapture hidden">
+                            Re-capture
+                        </button>
+                    </div>
+                    
+                    <div class="filename-preview" id="filename-preview">
+                        <span class="filename-preview-label">Output:</span>
+                        <span class="filename-preview-value" id="filename-preview-value">--</span>
+                    </div>
+                </div>
+                
+                <!-- No Capture List Message -->
+                <div class="no-capture-list-message" id="no-capture-list-message">
+                    <p>No capture list generated.</p>
+                    <p class="hint">Configure session settings above and generate a capture list to begin.</p>
+                </div>
+                
+                <!-- Capture Progress & Controls -->
+                <div class="capture-content">
+                    <div class="capture-progress-container" id="capture-progress-container">
+                        <div class="capture-progress-bar">
+                            <div class="capture-progress-fill" id="capture-progress-fill"></div>
+                        </div>
+                        <div class="capture-time-display">
+                            <span id="capture-elapsed-time">0:00.0</span>
+                            <span class="capture-time-separator">/</span>
+                            <span id="capture-total-time">0:00.0</span>
+                        </div>
+                    </div>
+                    
+                    <div class="capture-controls">
+                        <button id="start-capture-btn" class="btn-capture" disabled>
+                            Start Capture
+                        </button>
+                        <button id="abort-capture-btn" class="btn-abort hidden">
+                            Abort
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="capture-complete-indicator hidden" id="capture-complete-indicator">
+                    Capture complete
+                </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <!-- Startup Modal -->
+    <div id="startup-modal" class="modal">
+        <div class="startup-content">
+            <header class="startup-header">
+                <img src="Logo_Transparent.png" alt="Logo" class="startup-logo">
+                <h2>Reference Capturer</h2>
+            </header>
+            
+            <main class="startup-body">
+                <p class="startup-message">Start a new capture session or continue from a saved project.</p>
+                
+                <div class="startup-actions">
+                    <button id="startup-new-btn" class="btn-startup">
+                        <span class="btn-startup-icon">+</span>
+                        <span class="btn-startup-label">New Project</span>
+                        <span class="btn-startup-hint">Start a fresh capture session</span>
+                    </button>
+                    
+                    <button id="startup-open-btn" class="btn-startup">
+                        <span class="btn-startup-icon">&#128194;</span>
+                        <span class="btn-startup-label">Open Project</span>
+                        <span class="btn-startup-hint">Resume from a saved .rcp file</span>
+                    </button>
+                </div>
+            </main>
+        </div>
+    </div>
+    
+    <!-- Calibration Wizard Modal -->
+    <div id="calibration-wizard" class="modal hidden">
+        <div class="wizard-content">
+            <header class="wizard-header">
+                <h2>Calibration Wizard</h2>
+                <span class="step-indicator" id="wizard-step-indicator">Step 1 of 4</span>
+            </header>
+            
+            <main class="wizard-body" id="wizard-step-content">
+                <!-- Step content rendered dynamically by JavaScript -->
+            </main>
+            
+            <footer class="wizard-footer">
+                <button id="wizard-cancel" class="btn-secondary">Cancel</button>
+                <div class="wizard-nav">
+                    <button id="wizard-back" class="btn-secondary hidden">Back</button>
+                    <button id="wizard-next" class="btn-primary">Next</button>
+                </div>
+            </footer>
+        </div>
+    </div>
+    
+    <!-- JS: Split into feature-based modules (order matters for dependencies) -->
+    <script src="js/backend.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/meters.js"></script>
+    <script src="js/audio-setup.js"></script>
+    <script src="js/reference-signal.js"></script>
+    <script src="js/calibration.js"></script>
+    <script src="js/monitor.js"></script>
+    <script src="js/capture.js"></script>
+    <script src="js/project.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

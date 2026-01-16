@@ -1,0 +1,320 @@
+// Project save/load module
+
+/**
+ * Project state tracking
+ */
+const projectState = {
+    filePath: '',
+    fileName: '',
+    hasSavedProject: false
+};
+
+/**
+ * Update project info display in session header
+ */
+function updateProjectDisplay() {
+    const projectNameEl = document.getElementById('project-name');
+    
+    if (projectState.hasSavedProject && projectState.fileName) {
+        projectNameEl.textContent = projectState.fileName;
+        projectNameEl.classList.add('has-file');
+        projectNameEl.title = projectState.filePath;
+    } else {
+        projectNameEl.textContent = 'Unsaved Project';
+        projectNameEl.classList.remove('has-file');
+        projectNameEl.title = '';
+    }
+}
+
+/**
+ * Show the startup modal
+ */
+function showStartupModal() {
+    const modal = document.getElementById('startup-modal');
+    modal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+}
+
+/**
+ * Hide the startup modal
+ */
+function hideStartupModal() {
+    const modal = document.getElementById('startup-modal');
+    modal.classList.add('hidden');
+    document.body.classList.remove('modal-open');
+}
+
+/**
+ * Handle "New Project" from startup modal
+ * Opens save dialog to set project location, then starts fresh
+ */
+async function handleStartupNewProject() {
+    const result = await backend.call('saveProjectAs');
+    
+    if (result.cancelled) {
+        // User cancelled, stay on startup modal
+        return;
+    }
+    
+    if (result.success) {
+        // Update project state
+        projectState.filePath = result.filePath;
+        projectState.fileName = result.fileName;
+        projectState.hasSavedProject = true;
+        
+        updateProjectDisplay();
+        hideStartupModal();
+        
+        console.log(`New project created: ${result.filePath}`);
+    } else {
+        alert('Failed to create project: ' + (result.errorMessage || 'Unknown error'));
+    }
+}
+
+/**
+ * Handle "Open Project" from startup modal
+ */
+async function handleStartupOpenProject() {
+    const result = await backend.call('loadProject');
+    
+    if (result.cancelled) {
+        // User cancelled, stay on startup modal
+        return;
+    }
+    
+    if (result.success) {
+        // Update project state
+        projectState.filePath = result.filePath;
+        projectState.fileName = result.fileName;
+        projectState.hasSavedProject = true;
+        
+        updateProjectDisplay();
+        hideStartupModal();
+        
+        console.log(`Project loaded from: ${result.filePath}`);
+        
+        // Refresh all UI state from backend
+        await refreshAllUIState();
+        
+        // Show warning if reference signal was missing
+        if (result.referenceSignalMissing) {
+            alert(`Warning: Reference signal file not found:\n${result.missingReferenceSignalPath}\n\nPlease select a new reference signal.`);
+        }
+    } else {
+        alert('Failed to load project: ' + (result.errorMessage || 'Unknown error'));
+    }
+}
+
+/**
+ * Initialize startup modal
+ */
+function initStartupModal() {
+    const newBtn = document.getElementById('startup-new-btn');
+    const openBtn = document.getElementById('startup-open-btn');
+    
+    if (newBtn) {
+        newBtn.addEventListener('click', handleStartupNewProject);
+    }
+    
+    if (openBtn) {
+        openBtn.addEventListener('click', handleStartupOpenProject);
+    }
+}
+
+/**
+ * Refresh all UI state after loading a project
+ * Reloads all state from the backend to update the UI
+ */
+async function refreshAllUIState() {
+    try {
+        // Reload audio devices and state
+        await loadAudioDevices();
+        await loadSampleRates();
+        
+        // Reload output gain trim
+        outputGainTrimDb = await backend.call('getOutputGainTrim');
+        document.getElementById('output-gain-trim').value = outputGainTrimDb;
+        updateOutputTrimDisplay();
+        
+        // Reload reference signal state
+        await loadReferenceSignalState();
+        
+        // Reload calibration state
+        const calState = await backend.call('getCalibrationState');
+        if (calState && calState.completed) {
+            calibrationState.completed = calState.completed;
+            calibrationState.completedAt = calState.completedAt;
+            calibrationState.testToneLevelDbfs = calState.testToneLevelDbfs ?? -18.0;
+            calibrationState.unityLevelDbfs = calState.unityLevelDbfs;
+            calibrationState.maxLevelDbfs = calState.maxLevelDbfs;
+            calibrationState.outputTrimDb = calState.outputTrimDb ?? 0.0;
+        } else {
+            calibrationState.completed = false;
+        }
+        updateCalibrationStatus();
+        
+        // Reload recording tail
+        recordingTailMs = await backend.call('getRecordingTailMs');
+        document.getElementById('recording-tail').value = String(recordingTailMs);
+        
+        // Reload output folder state
+        await loadOutputFolderState();
+        
+        // Reload capture controls
+        await loadCaptureControls();
+        
+        // Reload capture list
+        await loadCaptureList();
+        
+        // Initialize current capture display if we have captures
+        if (captureListState.items.length > 0) {
+            initCurrentCaptureDisplay();
+        }
+        
+        // Update capture UI for reference signal
+        updateCaptureForReferenceSignal();
+        
+    } catch (error) {
+        console.error('Error refreshing UI state:', error);
+    }
+}
+
+/**
+ * Reset all UI state to defaults (for new/close project)
+ */
+async function resetUIToDefaults() {
+    // Reset project state
+    projectState.filePath = '';
+    projectState.fileName = '';
+    projectState.hasSavedProject = false;
+    updateProjectDisplay();
+    
+    // Reset reference signal state
+    referenceSignalState.loaded = false;
+    referenceSignalState.filePath = '';
+    referenceSignalState.fileName = '';
+    referenceSignalState.sampleRate = 0;
+    referenceSignalState.numSamples = 0;
+    referenceSignalState.durationSeconds = 0;
+    referenceSignalState.isPlaying = false;
+    referenceSignalState.isLooping = false;
+    updateReferenceSignalDisplay();
+    
+    // Reset calibration state
+    calibrationState.completed = false;
+    calibrationState.completedAt = null;
+    calibrationState.unityLevelDbfs = null;
+    calibrationState.maxLevelDbfs = null;
+    calibrationState.outputTrimDb = 0.0;
+    updateCalibrationStatus();
+    
+    // Reset output gain trim
+    outputGainTrimDb = 0.0;
+    const trimSlider = document.getElementById('output-gain-trim');
+    if (trimSlider) {
+        trimSlider.value = 0;
+    }
+    updateOutputTrimDisplay();
+    
+    // Reset capture controls
+    captureControlsState.controls = [];
+    captureControlsState.totalCaptureCount = 0;
+    updateCaptureControlsDisplay();
+    
+    // Reset capture list
+    captureListState.items = [];
+    captureListState.controlNames = [];
+    updateCaptureListDisplay();
+    updateCaptureListButtons();
+    
+    // Reset current capture display
+    currentCaptureState.index = 0;
+    currentCaptureState.total = 0;
+    currentCaptureState.controlValues = {};
+    currentCaptureState.status = 'ready';
+    updateCurrentCaptureDisplay();
+    
+    // Reset output folder display
+    const folderPathEl = document.getElementById('output-folder-path');
+    const folderStatusEl = document.getElementById('output-folder-status');
+    if (folderPathEl) folderPathEl.textContent = 'No folder selected';
+    if (folderStatusEl) folderStatusEl.textContent = '';
+    
+    // Reset recording tail to default
+    recordingTailMs = 500;
+    const tailSelect = document.getElementById('recording-tail');
+    if (tailSelect) tailSelect.value = '500';
+}
+
+/**
+ * Handle project new requested event from native menu (New Project)
+ * This resets the UI and immediately opens the save dialog
+ */
+async function onProjectNewRequested() {
+    console.log('New project requested from menu');
+    
+    // Reset UI to defaults first
+    await resetUIToDefaults();
+    
+    // Open save dialog (same as startup modal "New Project" button)
+    const result = await backend.call('saveProjectAs');
+    
+    if (result.cancelled) {
+        // User cancelled - show startup modal so they can choose what to do
+        showStartupModal();
+        return;
+    }
+    
+    if (result.success) {
+        // Update project state
+        projectState.filePath = result.filePath;
+        projectState.fileName = result.fileName;
+        projectState.hasSavedProject = true;
+        
+        updateProjectDisplay();
+        hideStartupModal();
+        
+        console.log(`New project created: ${result.filePath}`);
+    } else {
+        alert('Failed to create project: ' + (result.errorMessage || 'Unknown error'));
+        showStartupModal();
+    }
+}
+
+/**
+ * Handle project loaded event from native menu (Open Project)
+ */
+async function onProjectLoaded(data) {
+    console.log('Project loaded from menu:', data);
+    
+    if (data && data.success) {
+        // Update project state
+        projectState.filePath = data.filePath || '';
+        projectState.fileName = data.fileName || '';
+        projectState.hasSavedProject = true;
+        
+        updateProjectDisplay();
+        hideStartupModal();
+        
+        // Refresh all UI state from backend
+        await refreshAllUIState();
+        
+        // Show warning if reference signal was missing
+        if (data.referenceSignalMissing) {
+            alert(`Warning: Reference signal file not found:\n${data.missingReferenceSignalPath}\n\nPlease select a new reference signal.`);
+        }
+    } else if (data && data.errorMessage) {
+        alert('Failed to load project: ' + data.errorMessage);
+    }
+}
+
+/**
+ * Initialize project actions (startup modal)
+ */
+function initProjectActions() {
+    // Initialize startup modal buttons
+    initStartupModal();
+    
+    // Show startup modal on launch
+    showStartupModal();
+}
