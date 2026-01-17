@@ -7,9 +7,9 @@ A standalone macOS desktop application for capturing audio through hardware unit
 - **Audio I/O Setup**: Device enumeration, input/output channel selection, sample rate configuration (44.1/48/96 kHz)
 - **Real-time Metering**: Input and output level meters (RMS + peak, dBFS) with output trim control
 - **Calibration Wizard**: 4-step guided workflow for gain staging before capture sessions
-- **Reference Signal**: Load mono WAV files, preview playback, display metadata
+- **Reference Signals**: Load multiple mono WAV files with per-signal tail settings, preview playback
 - **Capture Matrix**: Define controls (continuous/discrete) and values, auto-generate capture list as cartesian product
-- **Capture Workflow**: Synchronized playback + recording with configurable tail (0-1000ms), auto-advance through captures
+- **Capture Workflow**: Synchronized playback + recording, auto-cycles through all reference signals per capture, auto-advance through captures
 - **Auto-export**: Standardized naming convention (`{signal}_{samplerate}_{control1}-{value1}_...wav`)
 - **Capture Log**: JSON metadata for ML training pipeline
 - **Project Persistence**: Save/load sessions, auto-save after each capture
@@ -87,7 +87,7 @@ ReferenceCapturer/
 
 1. **Audio Setup**: Select input/output devices and channels
 2. **Calibrate**: Run the calibration wizard to set proper gain staging
-3. **Load Reference**: Browse for a mono WAV file to use as test signal
+3. **Load Reference Signals**: Browse for one or more mono WAV files (each gets its own tail setting)
 4. **Define Matrix**: Add controls with values you want to capture (e.g., GAIN: 0, 25, 50, 75, 100)
 5. **Generate List**: Click "Generate Capture List" to create capture combinations
 6. **Set Output Folder**: Choose where captured files will be saved
@@ -102,15 +102,16 @@ Define controls like:
 - `GAIN` (continuous): 0, 25, 50, 75, 100
 - `SHAPE` (continuous): 1-10:1
 
-This generates 150 captures (3 x 5 x 10).
+This generates 150 capture entries (3 x 5 x 10). If you have 2 reference signals loaded, each entry produces 2 recordings (300 total files).
 
 ![Pending Captures](docs/pendingcaptures-1200w.webp)
 
 ### Output Files
 
-Captures are named automatically:
+With multiple reference signals, each capture entry records once per signal. Files are named automatically using the signal name:
 ```
 test_di_01_48k_MODE-UP_GAIN-75_SHAPE-10.wav
+test_di_02_48k_MODE-UP_GAIN-75_SHAPE-10.wav
 ```
 
 A `capture_log.json` file tracks all capture metadata for ML pipeline consumption.
@@ -122,7 +123,7 @@ A `capture_log.json` file tracks all capture metadata for ML pipeline consumptio
 Projects are saved as JSON and include:
 - Audio device settings
 - Calibration data
-- Reference signal path
+- Reference signals (paths and per-signal tail settings)
 - Capture matrix definition
 - Capture list with completion status
 - Output folder path
