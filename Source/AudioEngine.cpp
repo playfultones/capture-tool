@@ -28,9 +28,12 @@ AudioEngine::AudioEngine()
         for (int i = 0; i < numOutputChannels; ++i)
             setup.outputChannels.setBit(i);
         
-        deviceManager.setAudioDeviceSetup(setup, true);
-        DBG("AudioEngine: Enabled " + juce::String(numInputChannels) + " input channels, "
-            + juce::String(numOutputChannels) + " output channels");
+        auto setupResult = deviceManager.setAudioDeviceSetup(setup, true);
+        if (setupResult.isNotEmpty())
+            DBG("AudioEngine: Warning - channel setup failed: " + setupResult);
+        else
+            DBG("AudioEngine: Enabled " + juce::String(numInputChannels) + " input channels, "
+                + juce::String(numOutputChannels) + " output channels");
     }
     
     // Register as the audio callback
@@ -189,12 +192,18 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName, int channelInde
     setup.inputDeviceName = deviceName;
     
     // Get the number of input channels for this device
-    int numChannels = getInputChannelCount(deviceName);
+    int numInputChannels = getInputChannelCount(deviceName);
     
     // Enable all input channels so we can address them by index in the callback
     setup.inputChannels.clear();
-    for (int i = 0; i < numChannels; ++i)
+    for (int i = 0; i < numInputChannels; ++i)
         setup.inputChannels.setBit(i);
+    
+    // Also ensure all output channels remain enabled (device reconfiguration can reset them)
+    int numOutputChannels = getOutputChannelCount(setup.outputDeviceName);
+    setup.outputChannels.clear();
+    for (int i = 0; i < numOutputChannels; ++i)
+        setup.outputChannels.setBit(i);
     
     auto result = deviceManager.setAudioDeviceSetup(setup, true);
     
@@ -202,7 +211,7 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName, int channelInde
     {
         selectedInputChannel = channelIndex;
         DBG("AudioEngine: Input device set to " + deviceName + " channel " + juce::String(channelIndex)
-            + " (enabled " + juce::String(numChannels) + " channels)");
+            + " (enabled " + juce::String(numInputChannels) + " input, " + juce::String(numOutputChannels) + " output channels)");
         return true;
     }
     
@@ -229,12 +238,18 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName, int channelInd
     setup.outputDeviceName = deviceName;
     
     // Get the number of output channels for this device
-    int numChannels = getOutputChannelCount(deviceName);
+    int numOutputChannels = getOutputChannelCount(deviceName);
     
     // Enable all output channels so we can address them by index in the callback
     setup.outputChannels.clear();
-    for (int i = 0; i < numChannels; ++i)
+    for (int i = 0; i < numOutputChannels; ++i)
         setup.outputChannels.setBit(i);
+    
+    // Also ensure all input channels remain enabled (device reconfiguration can reset them)
+    int numInputChannels = getInputChannelCount(setup.inputDeviceName);
+    setup.inputChannels.clear();
+    for (int i = 0; i < numInputChannels; ++i)
+        setup.inputChannels.setBit(i);
     
     auto result = deviceManager.setAudioDeviceSetup(setup, true);
     
@@ -242,7 +257,7 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName, int channelInd
     {
         selectedOutputChannel = channelIndex;
         DBG("AudioEngine: Output device set to " + deviceName + " channel " + juce::String(channelIndex) 
-            + " (enabled " + juce::String(numChannels) + " channels)");
+            + " (enabled " + juce::String(numOutputChannels) + " output, " + juce::String(numInputChannels) + " input channels)");
         return true;
     }
     

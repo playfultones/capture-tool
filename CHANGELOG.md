@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-01-17
+
+### Added
+- Enhanced reference signal management
+
+### Changed
+- Updated documentation
+
+### Fixed
+- Preserve all channel bitmasks when switching audio devices
+
 ## [0.1.1] - 2026-01-17
 
 ### Added
