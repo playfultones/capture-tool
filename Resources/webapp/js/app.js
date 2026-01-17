@@ -13,7 +13,6 @@ async function init() {
         await initMonitor();
         initReferenceSignal();
         await initCalibration();
-        await initRecordingTail();
         initOutputFolder();
         initCapture();
         initCaptureControls();

@@ -1,5 +1,195 @@
 /* Capture section - matrix, controls, list, progress, current capture display */
 
+/* ==============================================================================
+   Reference Signals Section
+   ============================================================================== */
+
+.reference-signals-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.reference-signals-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.reference-signals-list:empty + .reference-signals-empty {
+    display: block;
+}
+
+.reference-signals-empty {
+    display: none;
+    padding: 1.5rem;
+    text-align: center;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    border: 1px dashed var(--border);
+}
+
+.reference-signals-empty .empty-message {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Signal Row */
+.reference-signal-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.625rem 0.75rem;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.reference-signal-row:hover {
+    border-color: var(--text-secondary);
+}
+
+.reference-signal-row.selected {
+    border-color: var(--accent);
+    background-color: rgba(74, 158, 255, 0.1);
+}
+
+.signal-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    min-width: 0;
+}
+
+.signal-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.signal-details {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.signal-tail-select {
+    padding: 0.25rem 0.375rem;
+    font-size: 0.75rem;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    min-width: 80px;
+}
+
+.signal-tail-select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.btn-remove-signal {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-remove-signal:hover {
+    background-color: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+}
+
+/* Add Zone */
+.reference-signals-add-zone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+}
+
+/* Playback Controls */
+.reference-signals-controls {
+    display: flex;
+    gap: 0.375rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+}
+
+.reference-signals-controls .btn-play,
+.reference-signals-controls .btn-stop,
+.reference-signals-controls .btn-loop {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: inherit;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.reference-signals-controls .btn-play {
+    background-color: rgba(74, 222, 128, 0.15);
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.reference-signals-controls .btn-play:hover:not(:disabled) {
+    background-color: rgba(74, 222, 128, 0.25);
+}
+
+.reference-signals-controls .btn-play:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.reference-signals-controls .btn-stop {
+    background-color: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+    border: 1px solid var(--error);
+}
+
+.reference-signals-controls .btn-stop:hover:not(:disabled) {
+    background-color: rgba(248, 113, 113, 0.25);
+}
+
+.reference-signals-controls .btn-stop:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.reference-signals-controls .btn-loop {
+    background-color: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.reference-signals-controls .btn-loop:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+}
+
+.reference-signals-controls .btn-loop.active {
+    background-color: rgba(74, 158, 255, 0.15);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
 /* Output Folder Section */
 .output-folder-section {
     margin-bottom: 1rem;
@@ -69,6 +259,57 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+}
+
+/* Signal Indicator (for multi-signal captures) */
+.capture-signal-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bg-tertiary);
+    border-radius: 4px;
+    font-size: 0.8125rem;
+}
+
+.capture-signal-indicator.hidden {
+    display: none;
+}
+
+.capture-signal-indicator .signal-label {
+    color: var(--text-secondary);
+}
+
+.capture-signal-indicator .signal-index {
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.capture-signal-indicator .signal-of {
+    color: var(--text-secondary);
+}
+
+.capture-signal-indicator .signal-count {
+    font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+    color: var(--text-secondary);
+}
+
+.capture-signal-indicator .signal-name {
+    color: var(--text-primary);
+    font-weight: 500;
+    margin-left: 0.25rem;
+}
+
+.capture-signal-indicator .signal-name::before {
+    content: '(';
+    color: var(--text-secondary);
+}
+
+.capture-signal-indicator .signal-name::after {
+    content: ')';
+    color: var(--text-secondary);
 }
 
 /* Capture Progress */

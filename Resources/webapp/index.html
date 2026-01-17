@@ -222,50 +222,31 @@
                 </div>
                 
                 <div class="collapsible-content" id="session-settings-content">
-                <!-- Reference Signal -->
+                <!-- Reference Signals -->
                 <div class="session-subsection">
-                    <h3 class="section-heading">Reference Signal</h3>
-                    <div class="reference-signal-content">
-                        <div class="reference-signal-status" id="reference-signal-status">
-                            <span class="no-signal">No file loaded</span>
+                    <h3 class="section-heading">Reference Signals</h3>
+                    <div class="reference-signals-container">
+                        <div class="reference-signals-list" id="reference-signals-list">
+                            <!-- Signal rows rendered dynamically -->
                         </div>
-                        
-                        <div class="reference-signal-controls">
-                            <button id="browse-reference-btn" class="btn-primary">
-                                Browse...
-                            </button>
-                            <button id="play-reference-btn" class="btn-play hidden" disabled>
-                                Play
-                            </button>
-                            <button id="stop-reference-btn" class="btn-stop hidden" disabled>
-                                Stop
-                            </button>
-                            <button id="loop-reference-btn" class="btn-loop hidden">
-                                Loop
-                            </button>
-                            <button id="clear-reference-btn" class="btn-secondary hidden">
-                                Clear
-                            </button>
+                        <div class="reference-signals-empty" id="reference-signals-empty">
+                            <span class="empty-message">No reference signals added</span>
+                        </div>
+                        <div class="reference-signals-add-zone" id="reference-signals-drop-zone">
+                            <button id="browse-reference-btn" class="btn-primary">Add Reference Signals...</button>
+                        </div>
+                        <div class="reference-signals-controls">
+                            <button id="play-reference-btn" class="btn-play" disabled>Play</button>
+                            <button id="stop-reference-btn" class="btn-stop" disabled>Stop</button>
+                            <button id="loop-reference-btn" class="btn-loop">Loop</button>
                         </div>
                     </div>
                     <div class="reference-signal-error hidden" id="reference-signal-error"></div>
                 </div>
                 
-                <!-- Recording Tail & Output Folder -->
+                <!-- Output Folder -->
                 <div class="session-subsection">
                     <h3 class="section-heading">Output Settings</h3>
-                    
-                    <div class="session-settings-row">
-                        <div class="form-group inline">
-                            <label for="recording-tail">Recording Tail</label>
-                            <select id="recording-tail">
-                                <option value="0">None (0ms)</option>
-                                <option value="250">250ms</option>
-                                <option value="500" selected>500ms</option>
-                                <option value="1000">1000ms</option>
-                            </select>
-                        </div>
-                    </div>
                     
                     <div class="form-group">
                         <label for="output-folder">Output Folder</label>
@@ -428,6 +409,13 @@
                 
                 <!-- Capture Progress & Controls -->
                 <div class="capture-content">
+                    <div class="capture-signal-indicator hidden" id="capture-signal-indicator">
+                        <span class="signal-label">Signal</span>
+                        <span class="signal-index" id="capture-signal-index">1</span>
+                        <span class="signal-of">of</span>
+                        <span class="signal-count" id="capture-signal-count">1</span>
+                        <span class="signal-name" id="capture-signal-name"></span>
+                    </div>
                     <div class="capture-progress-container" id="capture-progress-container">
                         <div class="capture-progress-bar">
                             <div class="capture-progress-fill" id="capture-progress-fill"></div>

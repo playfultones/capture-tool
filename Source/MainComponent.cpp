@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include <juce_audio_formats/juce_audio_formats.h>
 
 
 
@@ -207,20 +208,50 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 complete(juce::var(success));
             })
         
-        // Browse for reference signal file (opens native file picker)
+        //==============================================================================
+        // Reference Signals (Multiple per session)
+        
+        // Get all reference signals
         .withNativeFunction(
-            "browseReferenceSignal",
+            "getReferenceSignals",
             [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
-                // Create file chooser for WAV files
+                complete(getReferenceSignalsVar());
+            })
+        
+        // Add a reference signal from file path
+        // Args: [filePath: string]
+        // Returns: { success, id?, errorMessage?, signal? }
+        .withNativeFunction(
+            "addReferenceSignal",
+            [this](const juce::Array<juce::var>& args, Completion complete) {
+                if (args.isEmpty())
+                {
+                    auto* resultObj = new juce::DynamicObject();
+                    resultObj->setProperty("success", false);
+                    resultObj->setProperty("errorMessage", "File path required");
+                    complete(juce::var(resultObj));
+                    return;
+                }
+                
+                juce::String filePath = args[0].toString();
+                complete(addReferenceSignalFromPath(filePath));
+            })
+        
+        // Browse and add reference signals (opens native file picker with multi-select)
+        .withNativeFunction(
+            "browseAndAddReferenceSignals",
+            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
+                // Create file chooser for WAV files with multi-select
                 fileChooser = std::make_unique<juce::FileChooser>(
-                    "Select Reference Signal",
+                    "Select Reference Signals",
                     juce::File::getSpecialLocation(juce::File::userHomeDirectory),
                     "*.wav"
                 );
                 
-                // Launch async file picker
+                // Launch async file picker with multi-select
                 auto chooserFlags = juce::FileBrowserComponent::openMode 
-                    | juce::FileBrowserComponent::canSelectFiles;
+                    | juce::FileBrowserComponent::canSelectFiles
+                    | juce::FileBrowserComponent::canSelectMultipleItems;
                 
                 fileChooser->launchAsync(chooserFlags, [this, complete](const juce::FileChooser& fc) {
                     auto results = fc.getResults();
@@ -234,43 +265,144 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                         return;
                     }
                     
-                    auto file = results.getFirst();
-                    auto loadResult = audioEngine.loadReferenceSignal(file);
+                    // Try to add each selected file
+                    juce::Array<juce::var> added;
+                    juce::Array<juce::var> errors;
+                    
+                    for (const auto& file : results)
+                    {
+                        auto result = addReferenceSignalFromPath(file.getFullPathName());
+                        
+                        if (auto* resultObj = result.getDynamicObject())
+                        {
+                            if (static_cast<bool>(resultObj->getProperty("success")))
+                            {
+                                added.add(resultObj->getProperty("signal"));
+                            }
+                            else
+                            {
+                                auto* errorObj = new juce::DynamicObject();
+                                errorObj->setProperty("fileName", file.getFileName());
+                                errorObj->setProperty("errorMessage", resultObj->getProperty("errorMessage"));
+                                errors.add(juce::var(errorObj));
+                            }
+                        }
+                    }
                     
                     auto* resultObj = new juce::DynamicObject();
                     resultObj->setProperty("cancelled", false);
-                    resultObj->setProperty("success", loadResult.success);
-                    
-                    if (loadResult.success)
-                    {
-                        resultObj->setProperty("filePath", file.getFullPathName());
-                        resultObj->setProperty("fileName", file.getFileName());
-                        resultObj->setProperty("sampleRate", loadResult.sampleRate);
-                        resultObj->setProperty("numSamples", loadResult.numSamples);
-                        resultObj->setProperty("durationSeconds", loadResult.durationSeconds);
-                    }
-                    else
-                    {
-                        resultObj->setProperty("errorMessage", loadResult.errorMessage);
-                    }
-                    
+                    resultObj->setProperty("added", juce::var(added));
+                    resultObj->setProperty("errors", juce::var(errors));
+                    resultObj->setProperty("signals", getReferenceSignalsVar());
                     complete(juce::var(resultObj));
                 });
             })
         
-        // Get current reference signal state
+        // Remove a reference signal by ID
+        // Args: [id: string]
         .withNativeFunction(
-            "getReferenceSignalState",
-            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
-                complete(getReferenceSignalStateVar());
+            "removeReferenceSignal",
+            [this](const juce::Array<juce::var>& args, Completion complete) {
+                if (args.isEmpty())
+                {
+                    complete(juce::var(false));
+                    return;
+                }
+                
+                juce::String id = args[0].toString();
+                
+                // Find and remove the signal
+                for (int i = 0; i < referenceSignals.size(); ++i)
+                {
+                    if (referenceSignals[i].id == id)
+                    {
+                        // If this was the selected preview signal, clear selection
+                        if (selectedPreviewSignalId == id)
+                        {
+                            selectedPreviewSignalId = juce::String();
+                            audioEngine.clearReferenceSignal();
+                        }
+                        
+                        referenceSignals.remove(i);
+                        complete(juce::var(true));
+                        return;
+                    }
+                }
+                
+                complete(juce::var(false));
             })
         
-        // Clear/unload the reference signal
+        // Set recording tail for a specific signal
+        // Args: [id: string, tailMs: number]
         .withNativeFunction(
-            "clearReferenceSignal",
-            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
-                audioEngine.clearReferenceSignal();
-                complete(juce::var(true));
+            "setReferenceSignalTail",
+            [this](const juce::Array<juce::var>& args, Completion complete) {
+                if (args.size() < 2)
+                {
+                    complete(juce::var(-1));
+                    return;
+                }
+                
+                juce::String id = args[0].toString();
+                int newTailMs = static_cast<int>(args[1]);
+                
+                // Validate tail value
+                if (newTailMs != 0 && newTailMs != 250 && newTailMs != 500 && newTailMs != 1000)
+                {
+                    complete(juce::var(-1));
+                    return;
+                }
+                
+                // Find and update the signal
+                if (auto* signal = findSignalById(id))
+                {
+                    signal->tailMs = newTailMs;
+                    complete(juce::var(newTailMs));
+                    return;
+                }
+                
+                complete(juce::var(-1));
+            })
+        
+        // Select a reference signal for preview playback
+        // Args: [id: string]
+        .withNativeFunction(
+            "selectReferenceSignalForPreview",
+            [this](const juce::Array<juce::var>& args, Completion complete) {
+                if (args.isEmpty())
+                {
+                    complete(juce::var(false));
+                    return;
+                }
+                
+                juce::String id = args[0].toString();
+                
+                // Find the signal
+                const auto* signal = findSignalById(id);
+                if (signal == nullptr)
+                {
+                    complete(juce::var(false));
+                    return;
+                }
+                
+                // Load into audio engine for preview
+                juce::File signalFile(signal->filePath);
+                if (!signalFile.existsAsFile())
+                {
+                    complete(juce::var(false));
+                    return;
+                }
+                
+                auto loadResult = audioEngine.loadReferenceSignal(signalFile);
+                if (loadResult.success)
+                {
+                    selectedPreviewSignalId = id;
+                    complete(juce::var(true));
+                }
+                else
+                {
+                    complete(juce::var(false));
+                }
             })
         
         // Start reference signal preview playback
@@ -420,35 +552,6 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 }
             })
         
-        // Get recording tail duration in milliseconds
-        .withNativeFunction(
-            "getRecordingTailMs",
-            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
-                complete(juce::var(recordingTailMs));
-            })
-        
-        // Set recording tail duration in milliseconds
-        // Args: [tailMs: number] - one of 0, 250, 500, 1000
-        .withNativeFunction(
-            "setRecordingTailMs",
-            [this](const juce::Array<juce::var>& args, Completion complete) {
-                if (args.isEmpty())
-                {
-                    complete(juce::var(recordingTailMs));
-                    return;
-                }
-                
-                int newTailMs = static_cast<int>(args[0]);
-                
-                // Validate: only allow specific values
-                if (newTailMs == 0 || newTailMs == 250 || newTailMs == 500 || newTailMs == 1000)
-                {
-                    recordingTailMs = newTailMs;
-                }
-                
-                complete(juce::var(recordingTailMs));
-            })
-        
         // Get current capture state
         .withNativeFunction(
             "getCaptureState",
@@ -471,15 +574,77 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
             })
         
         // Start capture (synchronized playback + recording)
-        // Args: [captureItemId: string, tailMs: number (optional, uses configured recordingTailMs)]
+        // Args: [captureItemId: string, signalId: string (optional)]
+        // Uses the signal's configured tail duration
         // If captureItemId is provided, uses output folder + standardized naming
-        // If no captureItemId, falls back to temp directory
+        // When starting a new capture item, this resets signalIndex to 0
+        // After each signal completes, the backend auto-advances to the next signal
         .withNativeFunction(
             "startCapture",
             [this](const juce::Array<juce::var>& args, Completion complete) {
                 // Parse arguments
                 juce::String captureItemId = args.size() > 0 ? args[0].toString() : "";
-                int tailMs = args.size() > 1 ? static_cast<int>(args[1]) : recordingTailMs;
+                juce::String signalId = args.size() > 1 ? args[1].toString() : "";
+                
+                // Reset signal index for new capture item
+                if (captureItemId.isNotEmpty() && captureItemId != currentCaptureItemId)
+                {
+                    currentCaptureItemId = captureItemId;
+                    currentCaptureSignalIndex = 0;
+                }
+                
+                // Find the signal to use
+                const ReferenceSignal* signal = nullptr;
+                if (signalId.isNotEmpty())
+                {
+                    signal = findSignalById(signalId);
+                    // Update signal index to match
+                    for (int i = 0; i < referenceSignals.size(); ++i)
+                    {
+                        if (referenceSignals[i].id == signalId)
+                        {
+                            currentCaptureSignalIndex = i;
+                            break;
+                        }
+                    }
+                }
+                else if (currentCaptureSignalIndex >= 0 && currentCaptureSignalIndex < referenceSignals.size())
+                {
+                    // Use signal at current index
+                    signal = &referenceSignals.getReference(currentCaptureSignalIndex);
+                }
+                else if (!referenceSignals.isEmpty())
+                {
+                    // Default to first signal if none specified
+                    signal = &referenceSignals.getReference(0);
+                    currentCaptureSignalIndex = 0;
+                }
+                
+                if (signal == nullptr)
+                {
+                    auto* resultObj = new juce::DynamicObject();
+                    resultObj->setProperty("success", false);
+                    resultObj->setProperty("errorMessage", "No reference signal available");
+                    complete(juce::var(resultObj));
+                    return;
+                }
+                
+                // Load the signal into audio engine if not already loaded
+                if (audioEngine.getReferenceSignalPath() != signal->filePath)
+                {
+                    juce::File signalFile(signal->filePath);
+                    auto loadResult = audioEngine.loadReferenceSignal(signalFile);
+                    if (!loadResult.success)
+                    {
+                        auto* resultObj = new juce::DynamicObject();
+                        resultObj->setProperty("success", false);
+                        resultObj->setProperty("errorMessage", "Failed to load reference signal: " + loadResult.errorMessage);
+                        complete(juce::var(resultObj));
+                        return;
+                    }
+                }
+                
+                int tailMs = signal->tailMs;
                 
                 juce::File outputFile;
                 juce::String errorMessage;
@@ -549,6 +714,11 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
             "abortCapture",
             [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
                 audioEngine.abortCapture();
+                
+                // Reset multi-signal capture state
+                currentCaptureItemId = juce::String();
+                currentCaptureSignalIndex = 0;
+                
                 complete(juce::var(true));
             })
         
@@ -1055,12 +1225,14 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 // Clear reference signal
                 audioEngine.clearReferenceSignal();
                 
+                // Clear reference signals
+                referenceSignals.clear();
+                selectedPreviewSignalId = juce::String();
+                currentCaptureSignalIndex = 0;
+                
                 // Reset output folder and capture log
                 outputFolder = juce::File();
                 captureLogManager.reset();
-                
-                // Reset recording tail to default
-                recordingTailMs = 500;
                 
                 // Clear current project file
                 currentProjectFile = juce::File();
@@ -1174,29 +1346,136 @@ juce::var MainComponent::getAudioStateVar() const
     return juce::var(obj);
 }
 
-juce::var MainComponent::getReferenceSignalStateVar() const
+//==============================================================================
+// Reference Signals helpers
+
+juce::String MainComponent::generateSignalId() const
 {
-    auto* obj = new juce::DynamicObject();
+    auto timestamp = juce::Time::getMillisecondCounter();
+    auto random = juce::Random::getSystemRandom().nextInt();
+    return "sig_" + juce::String::toHexString(timestamp) + juce::String::toHexString(random);
+}
+
+juce::var MainComponent::getReferenceSignalsVar() const
+{
+    juce::Array<juce::var> signalsArray;
     
-    bool hasSignal = audioEngine.hasReferenceSignal();
-    obj->setProperty("loaded", hasSignal);
-    
-    if (hasSignal)
+    for (const auto& signal : referenceSignals)
     {
-        auto filePath = audioEngine.getReferenceSignalPath();
-        obj->setProperty("filePath", filePath);
-        obj->setProperty("fileName", juce::File(filePath).getFileName());
-        obj->setProperty("sampleRate", audioEngine.getReferenceSignalSampleRate());
-        obj->setProperty("numSamples", audioEngine.getReferenceSignalNumSamples());
-        obj->setProperty("durationSeconds", audioEngine.getReferenceSignalDuration());
+        auto* obj = new juce::DynamicObject();
+        obj->setProperty("id", signal.id);
+        obj->setProperty("filePath", signal.filePath);
+        obj->setProperty("fileName", signal.fileName);
+        obj->setProperty("sampleRate", signal.sampleRate);
+        obj->setProperty("numSamples", signal.numSamples);
+        obj->setProperty("durationSeconds", signal.durationSeconds);
+        obj->setProperty("tailMs", signal.tailMs);
+        signalsArray.add(juce::var(obj));
     }
     
-    // Include playback state
-    obj->setProperty("isPlaying", audioEngine.isReferencePlaybackActive());
-    obj->setProperty("playbackPosition", audioEngine.getReferencePlaybackPosition());
-    obj->setProperty("isLooping", audioEngine.isReferencePlaybackLooping());
+    auto* result = new juce::DynamicObject();
+    result->setProperty("signals", juce::var(signalsArray));
+    result->setProperty("selectedId", selectedPreviewSignalId);
+    result->setProperty("isPlaying", audioEngine.isReferencePlaybackActive());
+    result->setProperty("isLooping", audioEngine.isReferencePlaybackLooping());
     
-    return juce::var(obj);
+    return juce::var(result);
+}
+
+ReferenceSignal* MainComponent::findSignalById(const juce::String& id)
+{
+    for (auto& signal : referenceSignals)
+    {
+        if (signal.id == id)
+            return &signal;
+    }
+    return nullptr;
+}
+
+const ReferenceSignal* MainComponent::findSignalById(const juce::String& id) const
+{
+    for (const auto& signal : referenceSignals)
+    {
+        if (signal.id == id)
+            return &signal;
+    }
+    return nullptr;
+}
+
+bool MainComponent::validateSignalSampleRate(int signalSampleRate) const
+{
+    return signalSampleRate == audioEngine.getCurrentSampleRate();
+}
+
+juce::var MainComponent::addReferenceSignalFromPath(const juce::String& filePath)
+{
+    auto* resultObj = new juce::DynamicObject();
+    
+    juce::File file(filePath);
+    
+    if (!file.existsAsFile())
+    {
+        resultObj->setProperty("success", false);
+        resultObj->setProperty("errorMessage", "File not found");
+        return juce::var(resultObj);
+    }
+    
+    if (!file.hasFileExtension(".wav"))
+    {
+        resultObj->setProperty("success", false);
+        resultObj->setProperty("errorMessage", "Only WAV files are supported");
+        return juce::var(resultObj);
+    }
+    
+    // Load and validate the file
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+    
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
+    
+    if (reader == nullptr)
+    {
+        resultObj->setProperty("success", false);
+        resultObj->setProperty("errorMessage", "Could not read WAV file");
+        return juce::var(resultObj);
+    }
+    
+    // Check mono
+    if (reader->numChannels != 1)
+    {
+        resultObj->setProperty("success", false);
+        resultObj->setProperty("errorMessage", "Only mono WAV files are supported");
+        return juce::var(resultObj);
+    }
+    
+    // Check sample rate matches session
+    int signalSampleRate = static_cast<int>(reader->sampleRate);
+    if (!validateSignalSampleRate(signalSampleRate))
+    {
+        resultObj->setProperty("success", false);
+        resultObj->setProperty("errorMessage", 
+            "Sample rate mismatch: file is " + juce::String(signalSampleRate) + 
+            " Hz but session is " + juce::String(audioEngine.getCurrentSampleRate()) + " Hz");
+        return juce::var(resultObj);
+    }
+    
+    // Create signal entry
+    ReferenceSignal signal;
+    signal.id = generateSignalId();
+    signal.filePath = file.getFullPathName();
+    signal.fileName = file.getFileName();
+    signal.sampleRate = signalSampleRate;
+    signal.numSamples = static_cast<int>(reader->lengthInSamples);
+    signal.durationSeconds = static_cast<double>(reader->lengthInSamples) / reader->sampleRate;
+    signal.tailMs = 500; // Default tail
+    
+    referenceSignals.add(signal);
+    
+    resultObj->setProperty("success", true);
+    resultObj->setProperty("id", signal.id);
+    resultObj->setProperty("signal", signal.toVar());
+    
+    return juce::var(resultObj);
 }
 
 //==============================================================================
@@ -1303,9 +1582,24 @@ void MainComponent::captureStateChanged(AudioEngine::CaptureState newState)
     stateData->setProperty("state", stateStr);
     
     // Include total duration for progress calculation
+    // Get tail from current signal if available
+    int currentTailMs = 500; // default
+    if (currentCaptureSignalIndex >= 0 && currentCaptureSignalIndex < referenceSignals.size())
+    {
+        currentTailMs = referenceSignals[currentCaptureSignalIndex].tailMs;
+    }
+    
     double refDuration = audioEngine.getReferenceSignalDuration();
-    double totalDurationMs = (refDuration * 1000.0) + 50.0 + static_cast<double>(recordingTailMs);
+    double totalDurationMs = (refDuration * 1000.0) + 50.0 + static_cast<double>(currentTailMs);
     stateData->setProperty("totalDurationMs", totalDurationMs);
+    
+    // Include signal info for multi-signal progress display
+    stateData->setProperty("signalIndex", currentCaptureSignalIndex);
+    stateData->setProperty("signalCount", referenceSignals.size());
+    if (currentCaptureSignalIndex >= 0 && currentCaptureSignalIndex < referenceSignals.size())
+    {
+        stateData->setProperty("signalName", referenceSignals[currentCaptureSignalIndex].fileName);
+    }
     
     // Auto-save when recording starts (to persist the "recording" state)
     if (newState == AudioEngine::CaptureState::RECORDING && outputFolder.exists())
@@ -1325,36 +1619,137 @@ void MainComponent::captureComplete(const AudioEngine::CaptureResult& result)
     completeData->setProperty("outputFilePath", result.outputFilePath);
     completeData->setProperty("durationSeconds", result.durationSeconds);
     
-    // Update capture status and log if successful
+    // Include signal progress info
+    completeData->setProperty("signalIndex", currentCaptureSignalIndex);
+    completeData->setProperty("signalCount", referenceSignals.size());
+    
+    // Log this signal capture if successful
     if (result.success && outputFolder.exists())
     {
-        // Find the capture item by output path and update its status
-        for (auto& item : captureListManager.getItemsRef())
+        // Get current capture item
+        CaptureItem* captureItem = currentCaptureItemId.isNotEmpty() 
+            ? captureListManager.findById(currentCaptureItemId) : nullptr;
+        
+        if (captureItem != nullptr)
         {
-            if (item.outputFilePath == result.outputFilePath)
+            // Get tail from current signal
+            int currentTailMs = 500;
+            if (currentCaptureSignalIndex >= 0 && currentCaptureSignalIndex < referenceSignals.size())
             {
-                // Mark as complete in backend state
-                item.status = CaptureStatus::COMPLETE;
-                
-                // Get level info from the audio engine (last capture levels)
-                auto inputMeters = audioEngine.getInputMeterValues();
-                captureLogManager.appendCapture(
-                    item,
-                    audioEngine.getReferenceSignalPath(),
-                    audioEngine.getCurrentSampleRate(),
-                    recordingTailMs,
-                    result.durationSeconds,
-                    inputMeters.peakDb,
-                    inputMeters.rmsDb);
-                break;
+                currentTailMs = referenceSignals[currentCaptureSignalIndex].tailMs;
             }
+            
+            // Get level info from the audio engine (last capture levels)
+            auto inputMeters = audioEngine.getInputMeterValues();
+            captureLogManager.appendCapture(
+                *captureItem,
+                audioEngine.getReferenceSignalPath(),
+                audioEngine.getCurrentSampleRate(),
+                currentTailMs,
+                result.durationSeconds,
+                inputMeters.peakDb,
+                inputMeters.rmsDb);
         }
         
-        // Auto-save project to output folder (now with updated status)
+        // Check if there are more signals to capture
+        bool hasMoreSignals = (currentCaptureSignalIndex + 1) < referenceSignals.size();
+        completeData->setProperty("hasMoreSignals", hasMoreSignals);
+        
+        if (hasMoreSignals)
+        {
+            // Advance to next signal and auto-start capture
+            currentCaptureSignalIndex++;
+            
+            // Emit the completion event before starting next capture
+            emitEvent("captureComplete", juce::var(completeData));
+            
+            // Start next signal capture after a small delay (to let UI update)
+            juce::MessageManager::callAsync([this]() {
+                startNextSignalCapture();
+            });
+            return;
+        }
+        else
+        {
+            // All signals captured - mark capture item as complete
+            if (captureItem != nullptr)
+            {
+                captureItem->status = CaptureStatus::COMPLETE;
+            }
+            
+            // Reset state for next capture item
+            currentCaptureItemId = juce::String();
+            currentCaptureSignalIndex = 0;
+        }
+        
+        // Auto-save project to output folder
         autoSaveProject();
+    }
+    else if (!result.success)
+    {
+        // Capture failed - reset state
+        currentCaptureItemId = juce::String();
+        currentCaptureSignalIndex = 0;
     }
     
     emitEvent("captureComplete", juce::var(completeData));
+}
+
+void MainComponent::startNextSignalCapture()
+{
+    if (currentCaptureItemId.isEmpty() || referenceSignals.isEmpty())
+        return;
+    
+    if (currentCaptureSignalIndex < 0 || currentCaptureSignalIndex >= referenceSignals.size())
+        return;
+    
+    CaptureItem* captureItem = captureListManager.findById(currentCaptureItemId);
+    if (captureItem == nullptr)
+        return;
+    
+    const auto& signal = referenceSignals.getReference(currentCaptureSignalIndex);
+    
+    // Load the signal into audio engine
+    juce::File signalFile(signal.filePath);
+    if (!signalFile.existsAsFile())
+    {
+        DBG("Signal file not found: " + signal.filePath);
+        return;
+    }
+    
+    auto loadResult = audioEngine.loadReferenceSignal(signalFile);
+    if (!loadResult.success)
+    {
+        DBG("Failed to load signal: " + loadResult.errorMessage);
+        return;
+    }
+    
+    // Generate filename for this signal
+    juce::String filename = CaptureFilenameGenerator::generateFilename(
+        *captureItem,
+        captureControlManager.getControls(),
+        signal.filePath,
+        audioEngine.getCurrentSampleRate());
+    
+    juce::File outputFile = outputFolder.getChildFile(filename);
+    
+    // Start the capture
+    bool success = audioEngine.startCapture(outputFile, signal.tailMs);
+    
+    if (!success)
+    {
+        DBG("Failed to start capture for signal: " + signal.fileName);
+        
+        // Emit error event
+        auto* errorData = new juce::DynamicObject();
+        errorData->setProperty("success", false);
+        errorData->setProperty("errorMessage", "Failed to start capture for signal: " + signal.fileName);
+        emitEvent("captureComplete", juce::var(errorData));
+        
+        // Reset state
+        currentCaptureItemId = juce::String();
+        currentCaptureSignalIndex = 0;
+    }
 }
 
 //==============================================================================
@@ -1422,19 +1817,13 @@ juce::var MainComponent::serializeProjectState() const
     projectObj->setProperty("calibration", calibrationState.toVar());
     
     //--------------------------------------------------------------------------
-    // Reference Signal - use ProjectSerializer helper
-    ProjectReferenceSignal refSignal;
-    if (audioEngine.hasReferenceSignal())
-    {
-        refSignal.path = audioEngine.getReferenceSignalPath();
-        refSignal.durationMs = static_cast<int>(audioEngine.getReferenceSignalDuration() * 1000.0);
-    }
-    projectObj->setProperty("referenceSignal", ProjectSerializer::serializeReferenceSignal(refSignal));
+    // Reference Signals - use ReferenceSignalSerializer
+    projectObj->setProperty("referenceSignals", ReferenceSignalSerializer::serialize(referenceSignals));
     
     //--------------------------------------------------------------------------
-    // Capture Settings - use ProjectSerializer helper
+    // Capture Settings - use ProjectSerializer helper (tailMs no longer stored here, it's per-signal)
     ProjectCaptureSettings captureSettings;
-    captureSettings.tailMs = recordingTailMs;
+    captureSettings.tailMs = 500; // Default value, not used anymore
     captureSettings.outputFolderPath = outputFolder.getFullPathName();
     projectObj->setProperty("captureSettings", ProjectSerializer::serializeCaptureSettings(captureSettings));
     
@@ -1509,45 +1898,58 @@ LoadProjectResult MainComponent::deserializeProjectState(const juce::var& projec
     }
     
     //--------------------------------------------------------------------------
-    // Reference Signal - use ProjectSerializer helper for parsing
-    auto referenceSignalVar = projectObj->getProperty("referenceSignal");
-    if (referenceSignalVar.isObject())
+    // Reference Signals - use ReferenceSignalSerializer
+    referenceSignals.clear();
+    selectedPreviewSignalId = juce::String();
+    currentCaptureSignalIndex = 0;
+    audioEngine.clearReferenceSignal();
+    
+    auto referenceSignalsVar = projectObj->getProperty("referenceSignals");
+    if (referenceSignalsVar.isArray())
     {
-        auto refSignal = ProjectSerializer::deserializeReferenceSignal(referenceSignalVar);
+        auto loadedSignals = ReferenceSignalSerializer::deserialize(referenceSignalsVar);
         
-        if (refSignal.path.isNotEmpty())
+        for (const auto& signal : loadedSignals)
         {
-            juce::File refFile(refSignal.path);
+            juce::File signalFile(signal.filePath);
             
-            if (refFile.existsAsFile())
+            if (signalFile.existsAsFile())
             {
-                auto loadResult = audioEngine.loadReferenceSignal(refFile);
-                if (!loadResult.success)
+                // Validate sample rate matches session
+                // We need to read the file to check sample rate
+                juce::AudioFormatManager formatManager;
+                formatManager.registerBasicFormats();
+                
+                std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(signalFile));
+                if (reader != nullptr)
                 {
-                    // Non-fatal: reference signal failed to load but continue loading project
-                    result.referenceSignalMissing = true;
-                    result.missingReferenceSignalPath = refSignal.path;
+                    if (static_cast<int>(reader->sampleRate) == audioEngine.getCurrentSampleRate())
+                    {
+                        referenceSignals.add(signal);
+                    }
+                    else
+                    {
+                        // Sample rate mismatch - skip but note as warning
+                        result.referenceSignalMissing = true;
+                        result.missingReferenceSignalPath = signal.filePath + " (sample rate mismatch)";
+                    }
                 }
             }
             else
             {
                 // Reference signal file doesn't exist
                 result.referenceSignalMissing = true;
-                result.missingReferenceSignalPath = refSignal.path;
+                result.missingReferenceSignalPath = signal.filePath;
             }
         }
     }
     
     //--------------------------------------------------------------------------
-    // Capture Settings - use ProjectSerializer helper for parsing
+    // Capture Settings - use ProjectSerializer helper for parsing (tailMs no longer used)
     auto captureSettingsVar = projectObj->getProperty("captureSettings");
     if (captureSettingsVar.isObject())
     {
         auto captureSettings = ProjectSerializer::deserializeCaptureSettings(captureSettingsVar);
-        
-        if (captureSettings.tailMs == 0 || captureSettings.tailMs == 250 || 
-            captureSettings.tailMs == 500 || captureSettings.tailMs == 1000)
-            recordingTailMs = captureSettings.tailMs;
         
         if (captureSettings.outputFolderPath.isNotEmpty())
         {
@@ -1666,9 +2068,11 @@ void MainComponent::performMenuAction(const juce::String& action)
         calibrationState.reset();
         audioEngine.setOutputGainTrim(0.0f);
         audioEngine.clearReferenceSignal();
+        referenceSignals.clear();
+        selectedPreviewSignalId = juce::String();
+        currentCaptureSignalIndex = 0;
         outputFolder = juce::File();
         captureLogManager.reset();
-        recordingTailMs = 500;
         currentProjectFile = juce::File();
         
         // Notify frontend to reset UI and open save dialog

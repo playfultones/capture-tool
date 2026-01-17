@@ -1,55 +1,4 @@
-// Capture module - recording tail, output folder, progress, controls/matrix, list, current capture
-
-//==============================================================================
-// Recording Tail Configuration
-
-/**
- * Current recording tail duration in milliseconds
- */
-let recordingTailMs = 500;
-
-/**
- * Handle recording tail dropdown change
- */
-async function onRecordingTailChange() {
-    const select = document.getElementById('recording-tail');
-    const newValue = parseInt(select.value, 10);
-    
-    try {
-        const actualValue = await backend.call('setRecordingTailMs', newValue);
-        recordingTailMs = actualValue;
-        
-        // Sync dropdown in case backend returned a different value
-        select.value = String(recordingTailMs);
-        
-        // Update capture total time display if reference signal is loaded
-        if (referenceSignalState.loaded) {
-            updateCaptureForReferenceSignal();
-        }
-    } catch (error) {
-        console.error('Failed to set recording tail:', error);
-        // Revert dropdown to previous value
-        select.value = String(recordingTailMs);
-    }
-}
-
-/**
- * Initialize recording tail dropdown
- */
-async function initRecordingTail() {
-    const select = document.getElementById('recording-tail');
-    
-    try {
-        // Get initial value from backend
-        recordingTailMs = await backend.call('getRecordingTailMs');
-        select.value = String(recordingTailMs);
-        
-        // Set up event listener
-        select.addEventListener('change', onRecordingTailChange);
-    } catch (error) {
-        console.error('Failed to initialize recording tail:', error);
-    }
-}
+// Capture module - output folder, progress, controls/matrix, list, current capture
 
 //==============================================================================
 // Output Folder Selection
@@ -309,7 +258,7 @@ function stopCaptureProgressTimer() {
 
 /**
  * Handle capture state change event from backend
- * @param {object} data - { state: string, elapsedMs: number, totalDurationMs: number }
+ * @param {object} data - { state: string, elapsedMs: number, totalDurationMs: number, signalIndex: number, signalCount: number, signalName: string }
  */
 function onCaptureStateChanged(data) {
     // Map backend state string to our state enum
@@ -317,6 +266,7 @@ function onCaptureStateChanged(data) {
         case 'idle':
             captureState.state = CaptureState.IDLE;
             stopCaptureProgressTimer();
+            hideSignalIndicator();
             break;
         case 'recording':
             captureState.state = CaptureState.RECORDING;
@@ -326,6 +276,12 @@ function onCaptureStateChanged(data) {
                 captureState.totalDurationMs = data.totalDurationMs;
             }
             startCaptureProgressTimer();
+            // Update signal indicator if multiple signals
+            if (data.signalCount > 1) {
+                updateSignalIndicator(data.signalIndex, data.signalCount, data.signalName);
+            } else {
+                hideSignalIndicator();
+            }
             break;
         case 'done':
             captureState.state = CaptureState.DONE;
@@ -343,11 +299,47 @@ function onCaptureStateChanged(data) {
 }
 
 /**
+ * Update the signal indicator display
+ */
+function updateSignalIndicator(signalIndex, signalCount, signalName) {
+    const indicator = document.getElementById('capture-signal-indicator');
+    const indexEl = document.getElementById('capture-signal-index');
+    const countEl = document.getElementById('capture-signal-count');
+    const nameEl = document.getElementById('capture-signal-name');
+    
+    if (indicator && indexEl && countEl && nameEl) {
+        indexEl.textContent = String(signalIndex + 1); // 0-based to 1-based
+        countEl.textContent = String(signalCount);
+        nameEl.textContent = signalName || '';
+        indicator.classList.remove('hidden');
+    }
+}
+
+/**
+ * Hide the signal indicator
+ */
+function hideSignalIndicator() {
+    const indicator = document.getElementById('capture-signal-indicator');
+    if (indicator) {
+        indicator.classList.add('hidden');
+    }
+}
+
+/**
  * Handle capture complete event from backend
- * @param {object} data - { success: boolean, errorMessage: string, outputFilePath: string, durationSeconds: number }
+ * @param {object} data - { success: boolean, errorMessage: string, outputFilePath: string, durationSeconds: number, hasMoreSignals: boolean, signalIndex: number, signalCount: number }
  */
 function onCaptureComplete(data) {
+    // If there are more signals, the backend will auto-start the next one
+    // Don't fully reset state in that case
+    if (data.hasMoreSignals) {
+        // Just update progress for this signal, backend will send recording state for next
+        console.log(`Signal ${data.signalIndex + 1} of ${data.signalCount} complete, waiting for next...`);
+        return;
+    }
+    
     stopCaptureProgressTimer();
+    hideSignalIndicator();
     
     if (data.success) {
         captureState.state = CaptureState.DONE;
@@ -366,12 +358,16 @@ function onCaptureComplete(data) {
 
 /**
  * Start a capture
+ * With multiple signals, this starts the first signal for the current capture item.
+ * The backend will orchestrate cycling through all signals.
  */
 async function startCapture() {
     const startBtn = document.getElementById('start-capture-btn');
     
-    if (!referenceSignalState.loaded) {
-        console.error('Cannot start capture - no reference signal loaded');
+    // Check if we have reference signals
+    const signals = window.referenceSignalState?.signals || [];
+    if (signals.length === 0) {
+        console.error('Cannot start capture - no reference signals loaded');
         return;
     }
     
@@ -385,15 +381,20 @@ async function startCapture() {
     try {
         startBtn.disabled = true;
         
-        // Calculate total duration: reference signal duration + 50ms pre-delay + recording tail
+        // Calculate total duration: sum of all signals + their tails + delays
         const preDelayMs = 50;
-        captureState.totalDurationMs = (referenceSignalState.durationSeconds * 1000) + preDelayMs + recordingTailMs;
+        let totalDurationMs = 0;
+        for (const signal of signals) {
+            totalDurationMs += (signal.durationSeconds * 1000) + preDelayMs + signal.tailMs;
+        }
+        captureState.totalDurationMs = totalDurationMs;
         
         // Update total time display before starting
         document.getElementById('capture-total-time').textContent = formatCaptureTime(captureState.totalDurationMs);
         
-        // Pass capture item ID and recording tail to backend
-        const result = await backend.call('startCapture', currentItem.id, recordingTailMs);
+        // Start capture with first signal (backend handles the orchestration)
+        // Pass capture item ID only - backend will use first signal
+        const result = await backend.call('startCapture', currentItem.id);
         
         if (!result.success) {
             console.error('Failed to start capture:', result.errorMessage);
@@ -467,27 +468,37 @@ function initCapture() {
     startBtn.addEventListener('click', startCapture);
     abortBtn.addEventListener('click', abortCapture);
     
-    // Enable/disable start button based on reference signal
-    startBtn.disabled = !referenceSignalState.loaded;
+    // Enable/disable start button based on reference signals
+    const signals = window.referenceSignalState?.signals || [];
+    startBtn.disabled = signals.length === 0;
     
-    // Set initial total time based on reference signal if loaded
-    if (referenceSignalState.loaded) {
+    // Set initial total time based on reference signals if any
+    if (signals.length > 0) {
         const preDelayMs = 50;
-        captureState.totalDurationMs = (referenceSignalState.durationSeconds * 1000) + preDelayMs + recordingTailMs;
+        let totalDurationMs = 0;
+        for (const signal of signals) {
+            totalDurationMs += (signal.durationSeconds * 1000) + preDelayMs + signal.tailMs;
+        }
+        captureState.totalDurationMs = totalDurationMs;
         document.getElementById('capture-total-time').textContent = formatCaptureTime(captureState.totalDurationMs);
     }
 }
 
 /**
- * Update capture UI when reference signal changes
+ * Update capture UI when reference signals change
  */
 function updateCaptureForReferenceSignal() {
     const startBtn = document.getElementById('start-capture-btn');
+    const signals = window.referenceSignalState?.signals || [];
     
-    if (referenceSignalState.loaded) {
-        // Calculate and display total duration
+    if (signals.length > 0) {
+        // Calculate and display total duration for all signals
         const preDelayMs = 50;
-        captureState.totalDurationMs = (referenceSignalState.durationSeconds * 1000) + preDelayMs + recordingTailMs;
+        let totalDurationMs = 0;
+        for (const signal of signals) {
+            totalDurationMs += (signal.durationSeconds * 1000) + preDelayMs + signal.tailMs;
+        }
+        captureState.totalDurationMs = totalDurationMs;
         document.getElementById('capture-total-time').textContent = formatCaptureTime(captureState.totalDurationMs);
         
         // Enable start button only if:

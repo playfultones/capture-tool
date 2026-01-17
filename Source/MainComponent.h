@@ -8,6 +8,7 @@
 #include "capture/CaptureList.h"
 #include "capture/CaptureFilename.h"
 #include "capture/CaptureLog.h"
+#include "capture/ReferenceSignal.h"
 #include "project/ProjectState.h"
 
 class MainComponent : public juce::Component,
@@ -66,10 +67,38 @@ private:
     void captureComplete(const AudioEngine::CaptureResult& result) override;
 
     //==============================================================================
-    // Reference signal helpers
+    // Reference Signals (Multiple per session)
 
-    /** Get reference signal state as JSON for frontend */
-    juce::var getReferenceSignalStateVar() const;
+    /** List of reference signals for this session */
+    juce::Array<ReferenceSignal> referenceSignals;
+
+    /** Currently selected signal ID for preview playback */
+    juce::String selectedPreviewSignalId;
+
+    /** Current signal index during multi-signal capture (0-based) */
+    int currentCaptureSignalIndex = 0;
+
+    /** Current capture item ID for multi-signal orchestration */
+    juce::String currentCaptureItemId;
+
+    /** Start capture for the next signal in the sequence */
+    void startNextSignalCapture();
+
+    /** Generate a unique ID for a new reference signal */
+    juce::String generateSignalId() const;
+
+    /** Get reference signals as JSON array for frontend */
+    juce::var getReferenceSignalsVar() const;
+
+    /** Find a reference signal by ID, returns nullptr if not found */
+    ReferenceSignal* findSignalById(const juce::String& id);
+    const ReferenceSignal* findSignalById(const juce::String& id) const;
+
+    /** Add a reference signal from file path. Returns result with success/error. */
+    juce::var addReferenceSignalFromPath(const juce::String& filePath);
+
+    /** Validate that a signal matches the session sample rate */
+    bool validateSignalSampleRate(int signalSampleRate) const;
 
     //==============================================================================
     // Monitor state helpers
@@ -127,12 +156,6 @@ private:
 
     /** Current project file path (empty if not saved) */
     juce::File currentProjectFile;
-
-    //==============================================================================
-    // Recording tail configuration
-
-    /** Recording tail duration in milliseconds (0, 250, 500, 1000) */
-    int recordingTailMs = 500;
 
     //==============================================================================
     // Output folder configuration

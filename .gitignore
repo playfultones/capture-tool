@@ -22,3 +22,6 @@ cmake-build-*/
 docs/*.md
 CLAUDE.md
 .tickets/
+
+# Release scripts (internal only)
+scripts/

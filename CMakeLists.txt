@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(ReferenceCapturer VERSION 1.0.0)
+# Get version from git tags
+include(cmake/GitVersion.cmake)
+
+project(ReferenceCapturer VERSION ${CURRENT_VERSION})
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -1,103 +1,239 @@
-// Reference signal module - load, play, stop, loop, clear
+// Reference signals module - multiple signals with per-signal tail settings
 
 /**
- * Reference signal state
+ * Reference signals state
  */
-const referenceSignalState = {
-    loaded: false,
-    filePath: '',
-    fileName: '',
-    sampleRate: 0,
-    numSamples: 0,
-    durationSeconds: 0,
-    isPlaying: false,
-    isLooping: false
-};
+let referenceSignals = [];
+let selectedSignalId = null;
+let isPlaying = false;
+let isLooping = false;
 
 /**
- * Update the reference signal status display
+ * Format duration for display (e.g., "2.5s" or "1:23.4")
  */
-function updateReferenceSignalDisplay() {
-    const statusEl = document.getElementById('reference-signal-status');
-    const errorEl = document.getElementById('reference-signal-error');
-    const clearBtn = document.getElementById('clear-reference-btn');
-    const playBtn = document.getElementById('play-reference-btn');
-    const stopBtn = document.getElementById('stop-reference-btn');
-    const loopBtn = document.getElementById('loop-reference-btn');
-    
-    // Hide any previous error
-    errorEl.classList.add('hidden');
-    
-    if (referenceSignalState.loaded) {
-        const duration = formatDuration(referenceSignalState.durationSeconds);
-        const sampleRateKhz = (referenceSignalState.sampleRate / 1000).toFixed(1);
-        
-        statusEl.innerHTML = `
-            <div class="file-info">
-                <span class="file-name">${referenceSignalState.fileName}</span>
-                <span class="file-details">${duration} @ ${sampleRateKhz} kHz | Mono</span>
-            </div>
-        `;
-        
-        // Show playback and clear buttons
-        playBtn.classList.remove('hidden');
-        stopBtn.classList.remove('hidden');
-        loopBtn.classList.remove('hidden');
-        clearBtn.classList.remove('hidden');
-        
-        // Update button states based on playback
-        updatePlaybackButtonStates();
-    } else {
-        statusEl.innerHTML = '<span class="no-signal">No file loaded</span>';
-        
-        // Hide all buttons except browse
-        playBtn.classList.add('hidden');
-        stopBtn.classList.add('hidden');
-        loopBtn.classList.add('hidden');
-        clearBtn.classList.add('hidden');
+function formatSignalDuration(seconds) {
+    if (seconds < 60) {
+        return seconds.toFixed(1) + 's';
     }
-    
-    // Update capture UI (enable/disable start button, update total time)
-    updateCaptureForReferenceSignal();
+    const mins = Math.floor(seconds / 60);
+    const secs = (seconds % 60).toFixed(1);
+    return `${mins}:${secs.padStart(4, '0')}`;
 }
 
 /**
- * Update play/stop/loop button states based on playback state
+ * Render the signal list
+ */
+function renderSignalList() {
+    const listEl = document.getElementById('reference-signals-list');
+    const emptyEl = document.getElementById('reference-signals-empty');
+    
+    listEl.innerHTML = '';
+    
+    if (referenceSignals.length === 0) {
+        emptyEl.style.display = 'block';
+        updatePlaybackButtonStates();
+        updateCaptureForReferenceSignals();
+        return;
+    }
+    
+    emptyEl.style.display = 'none';
+    
+    for (const signal of referenceSignals) {
+        const row = document.createElement('div');
+        row.className = 'reference-signal-row';
+        row.dataset.id = signal.id;
+        
+        if (signal.id === selectedSignalId) {
+            row.classList.add('selected');
+        }
+        
+        const sampleRateKhz = (signal.sampleRate / 1000).toFixed(1);
+        
+        row.innerHTML = `
+            <div class="signal-info">
+                <span class="signal-name">${signal.fileName}</span>
+                <span class="signal-details">${formatSignalDuration(signal.durationSeconds)} @ ${sampleRateKhz} kHz</span>
+            </div>
+            <label class="signal-tail-label">Tail:</label>
+            <select class="signal-tail-select" data-id="${signal.id}">
+                <option value="0" ${signal.tailMs === 0 ? 'selected' : ''}>0ms</option>
+                <option value="250" ${signal.tailMs === 250 ? 'selected' : ''}>250ms</option>
+                <option value="500" ${signal.tailMs === 500 ? 'selected' : ''}>500ms</option>
+                <option value="1000" ${signal.tailMs === 1000 ? 'selected' : ''}>1000ms</option>
+            </select>
+            <button class="btn-remove-signal" data-id="${signal.id}" title="Remove signal">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+            </button>
+        `;
+        
+        // Click row to select for preview
+        row.addEventListener('click', (e) => {
+            // Don't select if clicking on controls
+            if (e.target.closest('.signal-tail-select') || e.target.closest('.btn-remove-signal')) {
+                return;
+            }
+            selectSignalForPreview(signal.id);
+        });
+        
+        listEl.appendChild(row);
+    }
+    
+    // Attach event handlers for tail dropdowns and remove buttons
+    listEl.querySelectorAll('.signal-tail-select').forEach(select => {
+        select.addEventListener('change', (e) => {
+            e.stopPropagation();
+            onTailChange(e.target.dataset.id, parseInt(e.target.value));
+        });
+    });
+    
+    listEl.querySelectorAll('.btn-remove-signal').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removeSignal(e.currentTarget.dataset.id);
+        });
+    });
+    
+    updatePlaybackButtonStates();
+    updateCaptureForReferenceSignals();
+}
+
+/**
+ * Update playback button states
  */
 function updatePlaybackButtonStates() {
     const playBtn = document.getElementById('play-reference-btn');
     const stopBtn = document.getElementById('stop-reference-btn');
     const loopBtn = document.getElementById('loop-reference-btn');
-    const clearBtn = document.getElementById('clear-reference-btn');
     
-    if (referenceSignalState.isPlaying) {
-        playBtn.disabled = true;
-        playBtn.classList.add('active');
-        stopBtn.disabled = false;
-        clearBtn.disabled = true;  // Don't allow clearing during playback
-    } else {
-        playBtn.disabled = false;
-        playBtn.classList.remove('active');
-        stopBtn.disabled = true;
-        clearBtn.disabled = false;
-    }
+    const hasSelection = selectedSignalId !== null;
+    const hasSignals = referenceSignals.length > 0;
     
-    // Update loop button state
-    loopBtn.classList.toggle('active', referenceSignalState.isLooping);
+    playBtn.disabled = !hasSelection || isPlaying;
+    stopBtn.disabled = !isPlaying;
+    
+    loopBtn.classList.toggle('active', isLooping);
 }
 
 /**
- * Show an error message for reference signal loading
- * @param {string} message 
+ * Select a signal for preview playback
+ */
+async function selectSignalForPreview(id) {
+    try {
+        const success = await backend.call('selectReferenceSignalForPreview', id);
+        
+        if (success) {
+            selectedSignalId = id;
+            
+            // Update visual selection
+            document.querySelectorAll('.reference-signal-row').forEach(row => {
+                row.classList.toggle('selected', row.dataset.id === id);
+            });
+            
+            updatePlaybackButtonStates();
+        }
+    } catch (error) {
+        console.error('Failed to select signal for preview:', error);
+    }
+}
+
+/**
+ * Handle tail duration change
+ */
+async function onTailChange(id, tailMs) {
+    try {
+        const actualTail = await backend.call('setReferenceSignalTail', id, tailMs);
+        
+        if (actualTail >= 0) {
+            // Update local state
+            const signal = referenceSignals.find(s => s.id === id);
+            if (signal) {
+                signal.tailMs = actualTail;
+            }
+        }
+    } catch (error) {
+        console.error('Failed to set signal tail:', error);
+    }
+}
+
+/**
+ * Remove a signal from the list
+ */
+async function removeSignal(id) {
+    try {
+        const success = await backend.call('removeReferenceSignal', id);
+        
+        if (success) {
+            referenceSignals = referenceSignals.filter(s => s.id !== id);
+            
+            // If removed signal was selected, clear selection
+            if (selectedSignalId === id) {
+                selectedSignalId = null;
+            }
+            
+            renderSignalList();
+        }
+    } catch (error) {
+        console.error('Failed to remove signal:', error);
+    }
+}
+
+/**
+ * Browse and add signals
+ */
+async function browseAndAddSignals() {
+    const browseBtn = document.getElementById('browse-reference-btn');
+    
+    try {
+        browseBtn.disabled = true;
+        
+        const result = await backend.call('browseAndAddReferenceSignals');
+        
+        if (result.cancelled) {
+            return;
+        }
+        
+        // Update local state with all signals from backend
+        if (result.signals && result.signals.signals) {
+            referenceSignals = result.signals.signals;
+            selectedSignalId = result.signals.selectedId || null;
+            isPlaying = result.signals.isPlaying || false;
+            isLooping = result.signals.isLooping || false;
+        }
+        
+        renderSignalList();
+        
+        // Show errors if any
+        if (result.errors && result.errors.length > 0) {
+            const errorMessages = result.errors.map(e => `${e.fileName}: ${e.errorMessage}`).join('\n');
+            showReferenceSignalError(errorMessages);
+        }
+        
+    } catch (error) {
+        console.error('Failed to browse signals:', error);
+        showReferenceSignalError('Failed to open file picker');
+    } finally {
+        browseBtn.disabled = false;
+    }
+}
+
+/**
+ * Show error message
  */
 function showReferenceSignalError(message) {
     const errorEl = document.getElementById('reference-signal-error');
     errorEl.textContent = message;
     errorEl.classList.remove('hidden');
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        errorEl.classList.add('hidden');
+    }, 5000);
 }
 
 /**
- * Start reference signal preview playback
+ * Start preview playback
  */
 async function playReferenceSignal() {
     const playBtn = document.getElementById('play-reference-btn');
@@ -108,18 +244,16 @@ async function playReferenceSignal() {
         const success = await backend.call('startReferencePlayback');
         
         if (success) {
-            referenceSignalState.isPlaying = true;
+            isPlaying = true;
             updatePlaybackButtonStates();
-        } else {
-            console.error('Failed to start reference playback');
         }
     } catch (error) {
-        console.error('Failed to play reference signal:', error);
+        console.error('Failed to play signal:', error);
     }
 }
 
 /**
- * Stop reference signal preview playback
+ * Stop preview playback
  */
 async function stopReferenceSignal() {
     const stopBtn = document.getElementById('stop-reference-btn');
@@ -129,153 +263,202 @@ async function stopReferenceSignal() {
         
         await backend.call('stopReferencePlayback');
         
-        referenceSignalState.isPlaying = false;
+        isPlaying = false;
         updatePlaybackButtonStates();
     } catch (error) {
-        console.error('Failed to stop reference signal:', error);
+        console.error('Failed to stop signal:', error);
     }
 }
 
 /**
- * Toggle loop mode for reference signal playback
+ * Toggle loop mode
  */
 async function toggleLoopReferenceSignal() {
     try {
-        const newLoopState = !referenceSignalState.isLooping;
+        const newLoopState = !isLooping;
         await backend.call('setReferencePlaybackLoop', newLoopState);
         
-        referenceSignalState.isLooping = newLoopState;
+        isLooping = newLoopState;
         updatePlaybackButtonStates();
     } catch (error) {
-        console.error('Failed to toggle loop mode:', error);
-    }
-}
-
-/**
- * Clear the loaded reference signal
- */
-async function clearReferenceSignal() {
-    const clearBtn = document.getElementById('clear-reference-btn');
-    
-    try {
-        clearBtn.disabled = true;
-        
-        // Stop playback first if active
-        if (referenceSignalState.isPlaying) {
-            await backend.call('stopReferencePlayback');
-            referenceSignalState.isPlaying = false;
-        }
-        
-        await backend.call('clearReferenceSignal');
-        
-        // Reset state
-        referenceSignalState.loaded = false;
-        referenceSignalState.filePath = '';
-        referenceSignalState.fileName = '';
-        referenceSignalState.sampleRate = 0;
-        referenceSignalState.numSamples = 0;
-        referenceSignalState.durationSeconds = 0;
-        
-        updateReferenceSignalDisplay();
-    } catch (error) {
-        console.error('Failed to clear reference signal:', error);
-    } finally {
-        clearBtn.disabled = false;
-    }
-}
-
-/**
- * Handle browse button click - open file picker
- */
-async function browseReferenceSignal() {
-    const btn = document.getElementById('browse-reference-btn');
-    
-    try {
-        // Disable button during file picker
-        btn.disabled = true;
-        
-        const result = await backend.call('browseReferenceSignal');
-        
-        if (result.cancelled) {
-            // User cancelled, do nothing
-            return;
-        }
-        
-        if (result.success) {
-            // Update state
-            referenceSignalState.loaded = true;
-            referenceSignalState.filePath = result.filePath;
-            referenceSignalState.fileName = result.fileName;
-            referenceSignalState.sampleRate = result.sampleRate;
-            referenceSignalState.numSamples = result.numSamples;
-            referenceSignalState.durationSeconds = result.durationSeconds;
-            
-            updateReferenceSignalDisplay();
-        } else {
-            // Show error
-            showReferenceSignalError(result.errorMessage);
-        }
-    } catch (error) {
-        console.error('Failed to browse reference signal:', error);
-        showReferenceSignalError('Failed to open file picker');
-    } finally {
-        btn.disabled = false;
-    }
-}
-
-/**
- * Load initial reference signal state from backend
- */
-async function loadReferenceSignalState() {
-    try {
-        const state = await backend.call('getReferenceSignalState');
-        
-        if (state.loaded) {
-            referenceSignalState.loaded = true;
-            referenceSignalState.filePath = state.filePath;
-            referenceSignalState.fileName = state.fileName;
-            referenceSignalState.sampleRate = state.sampleRate;
-            referenceSignalState.numSamples = state.numSamples;
-            referenceSignalState.durationSeconds = state.durationSeconds;
-        }
-        
-        // Also update playback and loop state
-        referenceSignalState.isPlaying = state.isPlaying || false;
-        referenceSignalState.isLooping = state.isLooping || false;
-        
-        updateReferenceSignalDisplay();
-    } catch (error) {
-        console.error('Failed to load reference signal state:', error);
+        console.error('Failed to toggle loop:', error);
     }
 }
 
 /**
  * Handle playback state changes from backend
- * @param {object} data - { isPlaying: boolean }
  */
 function onPlaybackStateChanged(data) {
-    if (referenceSignalState.isPlaying !== data.isPlaying) {
-        referenceSignalState.isPlaying = data.isPlaying;
+    if (isPlaying !== data.isPlaying) {
+        isPlaying = data.isPlaying;
         updatePlaybackButtonStates();
     }
 }
 
 /**
- * Initialize reference signal UI
+ * Load signals state from backend
+ */
+async function loadSignalsFromBackend() {
+    try {
+        const state = await backend.call('getReferenceSignals');
+        
+        if (state && state.signals) {
+            referenceSignals = state.signals;
+            selectedSignalId = state.selectedId || null;
+            isPlaying = state.isPlaying || false;
+            isLooping = state.isLooping || false;
+        }
+        
+        renderSignalList();
+    } catch (error) {
+        console.error('Failed to load signals:', error);
+    }
+}
+
+/**
+ * Update capture section based on reference signals
+ * Called when signals change
+ */
+function updateCaptureForReferenceSignals() {
+    // Enable/disable start capture button based on having signals
+    const startBtn = document.getElementById('start-capture-btn');
+    if (startBtn) {
+        // This will be further controlled by capture.js
+        // We just ensure the basic prerequisite is met
+        if (referenceSignals.length === 0) {
+            startBtn.disabled = true;
+        }
+    }
+    
+    // Update total duration display if capture.js provides a function for it
+    if (typeof updateCaptureForReferenceSignal === 'function') {
+        // For backwards compatibility, pass first signal's info
+        if (referenceSignals.length > 0) {
+            const totalDuration = referenceSignals.reduce((sum, s) => {
+                return sum + s.durationSeconds + (s.tailMs / 1000) + 0.05; // +50ms delay
+            }, 0);
+            
+            // Create a pseudo-state for capture.js
+            window.referenceSignalState = {
+                loaded: true,
+                durationSeconds: totalDuration,
+                signals: referenceSignals
+            };
+        } else {
+            window.referenceSignalState = {
+                loaded: false,
+                durationSeconds: 0,
+                signals: []
+            };
+        }
+    }
+}
+
+/**
+ * Set up drag and drop handlers
+ */
+function setupDragAndDrop() {
+    const dropZone = document.getElementById('reference-signals-drop-zone');
+    
+    if (!dropZone) return;
+    
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
+    
+    // Highlight on drag enter/over
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.add('drag-over');
+        });
+    });
+    
+    // Remove highlight on drag leave/drop
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => {
+            dropZone.classList.remove('drag-over');
+        });
+    });
+    
+    // Handle drop
+    dropZone.addEventListener('drop', async (e) => {
+        const files = e.dataTransfer.files;
+        
+        if (files.length === 0) return;
+        
+        // Check if we have file paths (not available in standard WebView)
+        // In JUCE WebView on macOS, file.path may not be exposed
+        const firstFile = files[0];
+        if (!firstFile.path) {
+            // File paths not available - direct user to use Browse button
+            showReferenceSignalError('Drag & drop not supported in this context. Please use the Browse button to add files.');
+            return;
+        }
+        
+        // Add each WAV file
+        const errors = [];
+        
+        for (const file of files) {
+            // Check file extension
+            if (!file.name.toLowerCase().endsWith('.wav')) {
+                errors.push(`${file.name}: Only WAV files are supported`);
+                continue;
+            }
+            
+            const filePath = file.path;
+            
+            try {
+                const result = await backend.call('addReferenceSignal', filePath);
+                
+                if (!result.success) {
+                    errors.push(`${file.name}: ${result.errorMessage}`);
+                } else if (result.signal) {
+                    referenceSignals.push(result.signal);
+                }
+            } catch (error) {
+                errors.push(`${file.name}: ${error.message || 'Unknown error'}`);
+            }
+        }
+        
+        renderSignalList();
+        
+        if (errors.length > 0) {
+            showReferenceSignalError(errors.join('\n'));
+        }
+    });
+}
+
+/**
+ * Get reference signals for capture module
+ */
+function getReferenceSignals() {
+    return referenceSignals;
+}
+
+/**
+ * Initialize reference signals module
  */
 function initReferenceSignal() {
     const browseBtn = document.getElementById('browse-reference-btn');
     const playBtn = document.getElementById('play-reference-btn');
     const stopBtn = document.getElementById('stop-reference-btn');
     const loopBtn = document.getElementById('loop-reference-btn');
-    const clearBtn = document.getElementById('clear-reference-btn');
     
-    browseBtn.addEventListener('click', browseReferenceSignal);
+    browseBtn.addEventListener('click', browseAndAddSignals);
     playBtn.addEventListener('click', playReferenceSignal);
     stopBtn.addEventListener('click', stopReferenceSignal);
     loopBtn.addEventListener('click', toggleLoopReferenceSignal);
-    clearBtn.addEventListener('click', clearReferenceSignal);
+    
+    setupDragAndDrop();
     
     // Load initial state
-    loadReferenceSignalState();
+    loadSignalsFromBackend();
 }
+
+// Export for use by other modules
+window.getReferenceSignals = getReferenceSignals;
+window.referenceSignalState = { loaded: false, durationSeconds: 0, signals: [] };
