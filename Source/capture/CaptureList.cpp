@@ -14,6 +14,15 @@ void CaptureListManager::generate(const CaptureControlManager& controlManager)
 {
     items.clear();
 
+    // Always add the roundtrip entry first (unit bypassed, no control values)
+    CaptureItem roundtripItem;
+    roundtripItem.id = generateItemId();
+    roundtripItem.index = 1;
+    roundtripItem.status = CaptureStatus::PENDING;
+    roundtripItem.isRoundtrip = true;
+    // No control values for roundtrip - unit will be bypassed
+    items.add(roundtripItem);
+
     const auto& controls = controlManager.getControls();
     if (controls.isEmpty())
         return;
@@ -40,7 +49,7 @@ void CaptureListManager::generate(const CaptureControlManager& controlManager)
     for (int i = 0; i < indices.size(); ++i)
         indices.set(i, 0);
 
-    int captureIndex = 1;
+    int captureIndex = 2; // Start at 2 because roundtrip is at index 1
 
     while (true)
     {
@@ -49,6 +58,7 @@ void CaptureListManager::generate(const CaptureControlManager& controlManager)
         item.id = generateItemId();
         item.index = captureIndex++;
         item.status = CaptureStatus::PENDING;
+        item.isRoundtrip = false;
 
         // Set control values based on current indices
         for (int i = 0; i < controlNames.size(); ++i)
@@ -106,13 +116,26 @@ bool CaptureListManager::setStatus(const juce::String& id, CaptureStatus status)
     return false;
 }
 
-bool CaptureListManager::setOutputPath(const juce::String& id, const juce::String& path)
+bool CaptureListManager::addOutputPath(const juce::String& id, const juce::String& path)
 {
     for (auto& item : items)
     {
         if (item.id == id)
         {
-            item.outputFilePath = path;
+            item.outputFilePaths.add(path);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool CaptureListManager::clearOutputPaths(const juce::String& id)
+{
+    for (auto& item : items)
+    {
+        if (item.id == id)
+        {
+            item.outputFilePaths.clear();
             return true;
         }
     }
@@ -129,7 +152,13 @@ juce::var CaptureListManager::toVar() const
         obj->setProperty("id", item.id);
         obj->setProperty("index", item.index);
         obj->setProperty("status", statusToString(item.status));
-        obj->setProperty("outputFilePath", item.outputFilePath);
+        obj->setProperty("isRoundtrip", item.isRoundtrip);
+        
+        // Serialize output file paths as array
+        juce::Array<juce::var> pathsArray;
+        for (const auto& path : item.outputFilePaths)
+            pathsArray.add(juce::var(path));
+        obj->setProperty("outputFilePaths", juce::var(pathsArray));
 
         // Convert control values to object
         auto* valuesObj = new juce::DynamicObject();

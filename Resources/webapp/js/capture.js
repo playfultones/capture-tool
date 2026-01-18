@@ -873,7 +873,19 @@ function updateCurrentCaptureDisplay() {
     const currentItem = captureListState.items[currentCaptureState.index];
     
     // Update control values display
-    if (currentItem && currentItem.controlValues) {
+    // For roundtrip entries, show special "Roundtrip" indicator with N/A values
+    if (currentItem && currentItem.isRoundtrip) {
+        currentCaptureState.controlValues = {};
+        
+        // Show roundtrip indicator
+        settingsEl.innerHTML = `
+            <div class="capture-setting-card roundtrip-card">
+                <span class="capture-setting-name">Roundtrip</span>
+                <span class="capture-setting-value roundtrip-value">Bypass unit</span>
+            </div>
+        `;
+        settingsEl.classList.add('few-controls');
+    } else if (currentItem && currentItem.controlValues) {
         currentCaptureState.controlValues = currentItem.controlValues;
         
         const controlNames = Object.keys(currentItem.controlValues);
@@ -914,7 +926,12 @@ function updateCurrentCaptureDisplay() {
             statusBadge.textContent = 'Pending';
             statusBadge.classList.add('status-pending');
             if (instructionsText) {
-                instructionsText.textContent = 'Dial in the settings above on your hardware, then start capture';
+                // Different instructions for roundtrip vs normal captures
+                if (currentItem && currentItem.isRoundtrip) {
+                    instructionsText.textContent = 'Bypass your unit (direct signal path), then start capture';
+                } else {
+                    instructionsText.textContent = 'Dial in the settings above on your hardware, then start capture';
+                }
             }
             // Show Skip button, enable Start Capture if reference signal is loaded
             skipBtn.classList.remove('hidden');
@@ -1345,9 +1362,16 @@ function updateCaptureListDisplay() {
         bodyHtml += `<td class="col-status"><span class="status-badge ${status.className}">${status.label}</span></td>`;
         
         // Add control value columns
-        for (const name of captureListState.controlNames) {
-            const value = item.controlValues ? (item.controlValues[name] || '-') : '-';
-            bodyHtml += `<td class="col-control">${escapeHtml(value)}</td>`;
+        // For roundtrip entry, show "N/A" for all control values
+        if (item.isRoundtrip) {
+            for (const name of captureListState.controlNames) {
+                bodyHtml += `<td class="col-control roundtrip-na">N/A</td>`;
+            }
+        } else {
+            for (const name of captureListState.controlNames) {
+                const value = item.controlValues ? (item.controlValues[name] || '-') : '-';
+                bodyHtml += `<td class="col-control">${escapeHtml(value)}</td>`;
+            }
         }
         
         bodyHtml += '</tr>';

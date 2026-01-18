@@ -337,6 +337,13 @@ AudioEngine::MeterValues AudioEngine::getMonitorMeterValues() const
     return monitorMeter.getValues();
 }
 
+void AudioEngine::resetPeakHold()
+{
+    inputMeter.resetPeakHold();
+    outputMeter.resetPeakHold();
+    monitorMeter.resetPeakHold();
+}
+
 //==============================================================================
 // Output Gain Trim
 
@@ -1163,6 +1170,10 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
         DBG("AudioEngine: Active output channels: " + activeOutputs.toString(2));
         DBG("AudioEngine: Input channel names: " + device->getInputChannelNames().joinIntoString(", "));
         DBG("AudioEngine: Output channel names: " + device->getOutputChannelNames().joinIntoString(", "));
+        
+        // Update meter sample rates for correct RMS integration time
+        inputMeter.setSampleRate(currentSampleRate);
+        outputMeter.setSampleRate(currentSampleRate);
     }
     
     // Reset test tone state
@@ -1291,6 +1302,9 @@ void AudioEngine::MonitorDeviceCallback::audioDeviceAboutToStart(juce::AudioIODe
     {
         owner.monitorSampleRate = device->getCurrentSampleRate();
         DBG("AudioEngine: Monitor device started at " + juce::String(owner.monitorSampleRate) + " Hz");
+        
+        // Update monitor meter sample rate for correct RMS integration time
+        owner.monitorMeter.setSampleRate(owner.monitorSampleRate);
     }
 }
 

@@ -178,6 +178,14 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 complete(juce::var(audioEngine.getOutputGainTrim()));
             })
         
+        // Reset peak hold values on all meters
+        .withNativeFunction(
+            "resetPeakHold",
+            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
+                audioEngine.resetPeakHold();
+                complete(juce::var(true));
+            })
+        
         // Get available sample rates for current device
         .withNativeFunction(
             "getAvailableSampleRates",
@@ -694,10 +702,10 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                     resultObj->setProperty("outputFilePath", outputFile.getFullPathName());
                     resultObj->setProperty("captureItemId", captureItemId);
                     
-                    // Update the capture item's output file path
-                    if (captureItem != nullptr)
+                    // Clear output paths if this is the first signal (new capture)
+                    if (captureItem != nullptr && currentCaptureSignalIndex == 0)
                     {
-                        captureItem->outputFilePath = outputFile.getFullPathName();
+                        captureItem->outputFilePaths.clear();
                     }
                     
                     // Calculate total duration for progress display
@@ -1527,14 +1535,20 @@ void MainComponent::timerCallback()
     auto* inputObj = new juce::DynamicObject();
     inputObj->setProperty("rmsDb", inputMeters.rmsDb);
     inputObj->setProperty("peakDb", inputMeters.peakDb);
+    inputObj->setProperty("rmsHoldDb", inputMeters.rmsHoldDb);
+    inputObj->setProperty("peakHoldDb", inputMeters.peakHoldDb);
     
     auto* outputObj = new juce::DynamicObject();
     outputObj->setProperty("rmsDb", outputMeters.rmsDb);
     outputObj->setProperty("peakDb", outputMeters.peakDb);
+    outputObj->setProperty("rmsHoldDb", outputMeters.rmsHoldDb);
+    outputObj->setProperty("peakHoldDb", outputMeters.peakHoldDb);
     
     auto* monitorObj = new juce::DynamicObject();
     monitorObj->setProperty("rmsDb", monitorMeters.rmsDb);
     monitorObj->setProperty("peakDb", monitorMeters.peakDb);
+    monitorObj->setProperty("rmsHoldDb", monitorMeters.rmsHoldDb);
+    monitorObj->setProperty("peakHoldDb", monitorMeters.peakHoldDb);
     
     meterData->setProperty("input", juce::var(inputObj));
     meterData->setProperty("output", juce::var(outputObj));
@@ -1632,6 +1646,9 @@ void MainComponent::captureComplete(const AudioEngine::CaptureResult& result)
         
         if (captureItem != nullptr)
         {
+            // Add this output file path to the capture item
+            captureItem->outputFilePaths.add(result.outputFilePath);
+            
             // Get tail from current signal
             int currentTailMs = 500;
             if (currentCaptureSignalIndex >= 0 && currentCaptureSignalIndex < referenceSignals.size())
@@ -1866,10 +1883,15 @@ LoadProjectResult MainComponent::deserializeProjectState(const juce::var& projec
     
     //--------------------------------------------------------------------------
     // Audio Settings - use ProjectSerializer helper for parsing
+    int projectSampleRate = 48000; // Default
     auto audioSettingsVar = projectObj->getProperty("audioSettings");
     if (audioSettingsVar.isObject())
     {
         auto audioSettings = ProjectSerializer::deserializeAudioSettings(audioSettingsVar);
+        
+        // Store project sample rate for reference signal validation
+        if (audioSettings.sampleRate > 0)
+            projectSampleRate = audioSettings.sampleRate;
         
         // Get available devices to validate
         auto availableInputDevices = audioEngine.getInputDeviceNames();
@@ -1915,15 +1937,15 @@ LoadProjectResult MainComponent::deserializeProjectState(const juce::var& projec
             
             if (signalFile.existsAsFile())
             {
-                // Validate sample rate matches session
-                // We need to read the file to check sample rate
+                // Validate sample rate matches project's sample rate setting
+                // (use project sample rate, not current device which may not be initialized)
                 juce::AudioFormatManager formatManager;
                 formatManager.registerBasicFormats();
                 
                 std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(signalFile));
                 if (reader != nullptr)
                 {
-                    if (static_cast<int>(reader->sampleRate) == audioEngine.getCurrentSampleRate())
+                    if (static_cast<int>(reader->sampleRate) == projectSampleRate)
                     {
                         referenceSignals.add(signal);
                     }

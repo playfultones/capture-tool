@@ -1089,3 +1089,28 @@
 .filename-preview-value.warning {
     color: #f59e0b;
 }
+
+/* Roundtrip Entry Styles */
+.capture-list-table .col-control.roundtrip-na {
+    color: var(--text-secondary);
+    font-style: italic;
+    opacity: 0.7;
+}
+
+.capture-setting-card.roundtrip-card {
+    background: linear-gradient(135deg, var(--bg-primary) 0%, rgba(74, 158, 255, 0.08) 100%);
+    border-color: var(--accent);
+    grid-column: 1 / -1;
+}
+
+.capture-setting-card.roundtrip-card .capture-setting-name {
+    color: var(--accent);
+}
+
+.capture-setting-value.roundtrip-value {
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    font-style: italic;
+}

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-01-18
+
+### Added
+- Support for multiple output file paths in capture items
+- Support for roundtrip entries in capture list and UI
+- Peak hold reset functionality and meter UI hold value display
+
+### Changed
+- Enhanced LevelMeter with sample rate handling for accurate RMS integration
+- Updated signal loading to use project sample rate for validation
+
 ## [0.1.2] - 2026-01-17
 
 ### Added

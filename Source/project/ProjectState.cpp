@@ -138,6 +138,7 @@ juce::var serializeCaptureList(const juce::Array<CaptureItem>& items)
     {
         auto* captureObj = new juce::DynamicObject();
         captureObj->setProperty("id", item.id);
+        captureObj->setProperty("isRoundtrip", item.isRoundtrip);
         
         // Convert settings to object
         auto* settingsObj = new juce::DynamicObject();
@@ -152,11 +153,18 @@ juce::var serializeCaptureList(const juce::Array<CaptureItem>& items)
         // Status string
         captureObj->setProperty("status", CaptureListManager::statusToString(item.status));
         
-        // Output file (null/empty if not captured yet)
-        if (item.outputFilePath.isNotEmpty())
-            captureObj->setProperty("outputFile", item.outputFilePath);
+        // Output files array (one per reference signal)
+        if (!item.outputFilePaths.isEmpty())
+        {
+            juce::Array<juce::var> outputFilesArray;
+            for (const auto& path : item.outputFilePaths)
+                outputFilesArray.add(juce::var(path));
+            captureObj->setProperty("outputFiles", juce::var(outputFilesArray));
+        }
         else
-            captureObj->setProperty("outputFile", juce::var());
+        {
+            captureObj->setProperty("outputFiles", juce::var());
+        }
         
         capturesArray.add(juce::var(captureObj));
     }
@@ -184,14 +192,30 @@ juce::Array<CaptureItem> deserializeCaptureList(const juce::var& data,
                 
                 item.index = captureIndex++;
                 
+                // Parse isRoundtrip flag (defaults to false for legacy projects)
+                item.isRoundtrip = static_cast<bool>(captureObj->getProperty("isRoundtrip"));
+                
                 // Parse status
                 auto statusStr = captureObj->getProperty("status").toString();
                 item.status = CaptureListManager::stringToStatus(statusStr);
                 
-                // Parse output file path
-                auto outputFileVar = captureObj->getProperty("outputFile");
-                if (outputFileVar.isString())
-                    item.outputFilePath = outputFileVar.toString();
+                // Parse output file paths array (new format)
+                auto outputFilesVar = captureObj->getProperty("outputFiles");
+                if (auto* outputFilesArray = outputFilesVar.getArray())
+                {
+                    for (const auto& pathVar : *outputFilesArray)
+                    {
+                        if (pathVar.isString())
+                            item.outputFilePaths.add(pathVar.toString());
+                    }
+                }
+                else
+                {
+                    // Legacy: single outputFile field (backward compatibility)
+                    auto outputFileVar = captureObj->getProperty("outputFile");
+                    if (outputFileVar.isString() && outputFileVar.toString().isNotEmpty())
+                        item.outputFilePaths.add(outputFileVar.toString());
+                }
                 
                 // Parse control values (settings)
                 auto settingsVar = captureObj->getProperty("settings");

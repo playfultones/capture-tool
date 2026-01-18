@@ -17,7 +17,8 @@ enum class CaptureStatus
  * A single capture item in the generated list.
  * 
  * Represents one specific combination of control values
- * that will be captured.
+ * that will be captured. When multiple reference signals are used,
+ * each signal produces its own output file, all stored in outputFilePaths.
  */
 struct CaptureItem
 {
@@ -25,7 +26,14 @@ struct CaptureItem
     int index = 0;                            // Index in the capture list (1-based for display)
     juce::StringPairArray controlValues;      // Control name -> value mapping
     CaptureStatus status = CaptureStatus::PENDING;
-    juce::String outputFilePath;              // Path to captured file (when complete)
+    juce::StringArray outputFilePaths;        // Paths to captured files (one per reference signal)
+    bool isRoundtrip = false;                 // True for roundtrip entry (unit bypassed, no control values)
+    
+    // Legacy compatibility - returns first output path or empty string
+    juce::String getOutputFilePath() const 
+    { 
+        return outputFilePaths.isEmpty() ? juce::String() : outputFilePaths[0]; 
+    }
 };
 
 /**
@@ -91,13 +99,23 @@ public:
     bool setStatus(const juce::String& id, CaptureStatus status);
 
     /**
-     * Set the output file path of a capture item.
+     * Add an output file path to a capture item.
+     * Used when capturing multiple reference signals per item.
      * 
      * @param id The item ID
-     * @param path Output file path
+     * @param path Output file path to add
      * @return true if found and updated
      */
-    bool setOutputPath(const juce::String& id, const juce::String& path);
+    bool addOutputPath(const juce::String& id, const juce::String& path);
+    
+    /**
+     * Clear output file paths for a capture item.
+     * Called when starting a new capture for this item.
+     * 
+     * @param id The item ID
+     * @return true if found and cleared
+     */
+    bool clearOutputPaths(const juce::String& id);
 
     /**
      * Convert capture list to juce::var for JSON serialization.

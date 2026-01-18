@@ -152,7 +152,9 @@ void CaptureLogManager::appendCapture(const CaptureItem& item,
     captureObj->setProperty("settings", juce::var(settingsObj));
     
     // Output file (just the filename, not full path)
-    juce::File outputFile(item.outputFilePath);
+    // Use the last output path in the array (most recent capture)
+    juce::String outputPath = item.outputFilePaths.isEmpty() ? juce::String() : item.outputFilePaths[item.outputFilePaths.size() - 1];
+    juce::File outputFile(outputPath);
     captureObj->setProperty("outputFile", outputFile.getFileName());
     
     // Duration in ms

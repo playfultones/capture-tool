@@ -136,6 +136,9 @@ public:
     /** Get current monitor output metering values (thread-safe) */
     MeterValues getMonitorMeterValues() const;
 
+    /** Reset peak hold values on all meters */
+    void resetPeakHold();
+
     //==============================================================================
     // Output Gain Trim
 

@@ -46,18 +46,26 @@ juce::String CaptureFilenameGenerator::generateFilename(const CaptureItem& item,
     // 2. Sample rate
     filename += "_" + formatSampleRateForFilename(sampleRate);
     
-    // 3. Control values (in order they appear in controls)
-    // We iterate through controls to maintain consistent ordering
-    for (const auto& ctrl : controls)
+    // 3. For roundtrip entries, use "_roundtrip" instead of control values
+    if (item.isRoundtrip)
     {
-        juce::String value = item.controlValues[ctrl.name];
-        if (value.isNotEmpty())
+        filename += "_roundtrip";
+    }
+    else
+    {
+        // Control values (in order they appear in controls)
+        // We iterate through controls to maintain consistent ordering
+        for (const auto& ctrl : controls)
         {
-            // Sanitize control name and value for filename
-            juce::String safeName = sanitizeForFilename(ctrl.name);
-            juce::String safeValue = sanitizeForFilename(value);
-            
-            filename += "_" + safeName + "-" + safeValue;
+            juce::String value = item.controlValues[ctrl.name];
+            if (value.isNotEmpty())
+            {
+                // Sanitize control name and value for filename
+                juce::String safeName = sanitizeForFilename(ctrl.name);
+                juce::String safeValue = sanitizeForFilename(value);
+                
+                filename += "_" + safeName + "-" + safeValue;
+            }
         }
     }
     

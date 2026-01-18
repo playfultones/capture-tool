@@ -137,7 +137,7 @@ async function refreshAllUIState() {
         updateOutputTrimDisplay();
         
         // Reload reference signal state
-        await loadReferenceSignalState();
+        await loadSignalsFromBackend();
         
         // Reload calibration state
         const calState = await backend.call('getCalibrationState');

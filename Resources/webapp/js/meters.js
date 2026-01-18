@@ -2,7 +2,7 @@
 
 /**
  * Update meter UI elements
- * @param {object} meterData - { input: {rmsDb, peakDb}, output: {rmsDb, peakDb}, monitor: {rmsDb, peakDb} }
+ * @param {object} meterData - { input: {rmsDb, peakDb, rmsHoldDb, peakHoldDb}, ... }
  */
 function updateMeters(meterData) {
     // Input meters
@@ -17,8 +17,9 @@ function updateMeters(meterData) {
         
         inputRmsBar.style.width = `${inputRmsPercent}%`;
         inputPeakBar.style.left = `${inputPeakPercent}%`;
-        inputRmsValue.textContent = formatDb(meterData.input.rmsDb);
-        inputPeakValue.textContent = formatDb(meterData.input.peakDb);
+        // Show hold values in labels (max observed since last reset)
+        inputRmsValue.textContent = formatDb(meterData.input.rmsHoldDb);
+        inputPeakValue.textContent = formatDb(meterData.input.peakHoldDb);
     }
     
     // Output meters
@@ -33,8 +34,9 @@ function updateMeters(meterData) {
         
         outputRmsBar.style.width = `${outputRmsPercent}%`;
         outputPeakBar.style.left = `${outputPeakPercent}%`;
-        outputRmsValue.textContent = formatDb(meterData.output.rmsDb);
-        outputPeakValue.textContent = formatDb(meterData.output.peakDb);
+        // Show hold values in labels (max observed since last reset)
+        outputRmsValue.textContent = formatDb(meterData.output.rmsHoldDb);
+        outputPeakValue.textContent = formatDb(meterData.output.peakHoldDb);
     }
     
     // Monitor meters
@@ -49,7 +51,35 @@ function updateMeters(meterData) {
         
         monitorRmsBar.style.width = `${monitorRmsPercent}%`;
         monitorPeakBar.style.left = `${monitorPeakPercent}%`;
-        monitorRmsValue.textContent = formatDb(meterData.monitor.rmsDb);
-        monitorPeakValue.textContent = formatDb(meterData.monitor.peakDb);
+        // Show hold values in labels (max observed since last reset)
+        monitorRmsValue.textContent = formatDb(meterData.monitor.rmsHoldDb);
+        monitorPeakValue.textContent = formatDb(meterData.monitor.peakHoldDb);
     }
+}
+
+/**
+ * Reset peak hold values on all meters
+ * Call backend to reset, the values will update on next meter refresh
+ */
+async function resetPeakHold() {
+    try {
+        await backend.call('resetPeakHold');
+    } catch (e) {
+        console.error('Failed to reset peak hold:', e);
+    }
+}
+
+/**
+ * Initialize meter click handlers for peak hold reset
+ * Clicking on the meter values area resets peak hold
+ */
+function initMeterClickHandlers() {
+    // Get all meter-values containers
+    const meterValueContainers = document.querySelectorAll('.meter-values');
+    
+    meterValueContainers.forEach(container => {
+        container.style.cursor = 'pointer';
+        container.title = 'Click to reset peak hold';
+        container.addEventListener('click', resetPeakHold);
+    });
 }

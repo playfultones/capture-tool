@@ -20,6 +20,7 @@ async function init() {
         initCaptureWorkflowButtons();
         initProjectActions();
         initAllCollapsiblePanels();
+        initMeterClickHandlers();
         
         // Set up event listeners for audio device changes
         document.getElementById('input-device').addEventListener('change', onInputDeviceChange);
