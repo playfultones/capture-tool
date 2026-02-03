@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-02-03
+
+### Added
+- Visual capture guide feature with camera overlay and adjustable controls
+- Camera rotation functionality and UI support
+- Visual guide management system
+- Camera permission settings for visual capture guide overlay
+- Audio initialization and permission handling
+- Default output folder is now set to project directory if not specified
+
+### Changed
+- Updated README to remove redundant structure sections and added visual guide image
+
+### Fixed
+- Capture matrix generation logic
+- Defer device change listener registration to prevent crashes during initialization
+- Update autoSaveProject to use existing project file if available
+- Capture tail remaining logic to handle playback state correctly
+- Visual handle indicators and opacity settings for knob styles
+- Camera container class handling for active and creation states
+- Update GAIN control type from continuous to discrete in documentation
+
 ## [0.1.3] - 2026-01-18
 
 ### Added

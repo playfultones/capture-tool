@@ -6,13 +6,31 @@ AudioEngine::AudioEngine()
     // Register audio formats (WAV support)
     formatManager.registerBasicFormats();
     
+    // NOTE: Audio device initialization is deferred to initialize()
+    // This avoids triggering macOS microphone permission dialogs at app launch
+    // Change listener is also deferred to avoid crashes from device change
+    // notifications before the device manager is properly set up
+}
+
+bool AudioEngine::initialize()
+{
+    if (initialized)
+        return true;  // Already initialized
+    
+    DBG("AudioEngine: Initializing audio devices...");
+    
     // Initialize the audio device manager with default devices
+    // This is the point where macOS will show the microphone permission dialog
     auto result = deviceManager.initialiseWithDefaultDevices(2, 2);
     
     if (result.isNotEmpty())
+    {
         DBG("AudioEngine: Failed to initialize: " + result);
+        return false;
+    }
     
     // Enable all input and output channels on the default device
+    // Done in one setAudioDeviceSetup call to minimize permission triggers
     if (auto* device = deviceManager.getCurrentAudioDevice())
     {
         auto setup = deviceManager.getAudioDeviceSetup();
@@ -28,19 +46,30 @@ AudioEngine::AudioEngine()
         for (int i = 0; i < numOutputChannels; ++i)
             setup.outputChannels.setBit(i);
         
-        auto setupResult = deviceManager.setAudioDeviceSetup(setup, true);
+        // Use treatAsChosenDevice=false to avoid re-triggering device selection
+        auto setupResult = deviceManager.setAudioDeviceSetup(setup, false);
         if (setupResult.isNotEmpty())
             DBG("AudioEngine: Warning - channel setup failed: " + setupResult);
         else
             DBG("AudioEngine: Enabled " + juce::String(numInputChannels) + " input channels, "
                 + juce::String(numOutputChannels) + " output channels");
+        
+        // Cache the channel counts for the current device
+        inputChannelCountCache[setup.inputDeviceName] = numInputChannels;
+        outputChannelCountCache[setup.outputDeviceName] = numOutputChannels;
     }
     
     // Register as the audio callback
     deviceManager.addAudioCallback(this);
     
     // Listen for device list changes (e.g., when new audio interface is connected)
+    // Must be done AFTER initialization to avoid crashes from device change
+    // notifications before the device manager has an active device
     deviceManager.addChangeListener(this);
+    
+    initialized = true;
+    DBG("AudioEngine: Initialization complete");
+    return true;
 }
 
 AudioEngine::~AudioEngine()
@@ -51,8 +80,11 @@ AudioEngine::~AudioEngine()
     // Stop recording if active
     stopRecording();
     
-    deviceManager.removeChangeListener(this);
-    deviceManager.removeAudioCallback(this);
+    if (initialized)
+    {
+        deviceManager.removeChangeListener(this);
+        deviceManager.removeAudioCallback(this);
+    }
 }
 
 //==============================================================================
@@ -90,25 +122,22 @@ int AudioEngine::getInputChannelCount(const juce::String& deviceName) const
         auto setup = deviceManager.getAudioDeviceSetup();
         if (setup.inputDeviceName == deviceName)
         {
-            return currentDevice->getInputChannelNames().size();
+            int count = currentDevice->getInputChannelNames().size();
+            inputChannelCountCache[deviceName] = count;  // Update cache
+            return count;
         }
     }
     
-    // Otherwise, create a temporary device to query channel count
-    auto* deviceType = deviceManager.getCurrentDeviceTypeObject();
-    if (deviceType == nullptr)
-        return 0;
+    // Check cache first to avoid creating temporary devices (which triggers permission dialogs)
+    auto it = inputChannelCountCache.find(deviceName);
+    if (it != inputChannelCountCache.end())
+        return it->second;
     
-    // Create a temporary device instance to query its capabilities
-    std::unique_ptr<juce::AudioIODevice> tempDevice(
-        deviceType->createDevice("", deviceName)); // Empty output name, only query input
-    
-    if (tempDevice != nullptr)
-    {
-        return tempDevice->getInputChannelNames().size();
-    }
-    
-    return 0;
+    // If not cached and not the current device, we need to estimate or create device
+    // For macOS CoreAudio, most devices have at least 2 channels
+    // Return a safe default rather than triggering another permission dialog
+    DBG("AudioEngine: Channel count for '" + deviceName + "' not cached, returning default");
+    return 2;  // Safe default - actual count will be cached when device is selected
 }
 
 int AudioEngine::getOutputChannelCount(const juce::String& deviceName) const
@@ -119,25 +148,21 @@ int AudioEngine::getOutputChannelCount(const juce::String& deviceName) const
         auto setup = deviceManager.getAudioDeviceSetup();
         if (setup.outputDeviceName == deviceName)
         {
-            return currentDevice->getOutputChannelNames().size();
+            int count = currentDevice->getOutputChannelNames().size();
+            outputChannelCountCache[deviceName] = count;  // Update cache
+            return count;
         }
     }
     
-    // Otherwise, create a temporary device to query channel count
-    auto* deviceType = deviceManager.getCurrentDeviceTypeObject();
-    if (deviceType == nullptr)
-        return 0;
+    // Check cache first to avoid creating temporary devices (which triggers permission dialogs)
+    auto it = outputChannelCountCache.find(deviceName);
+    if (it != outputChannelCountCache.end())
+        return it->second;
     
-    // Create a temporary device instance to query its capabilities
-    std::unique_ptr<juce::AudioIODevice> tempDevice(
-        deviceType->createDevice(deviceName, "")); // Empty input name, only query output
-    
-    if (tempDevice != nullptr)
-    {
-        return tempDevice->getOutputChannelNames().size();
-    }
-    
-    return 0;
+    // If not cached and not the current device, return a safe default
+    // Actual count will be cached when device is selected
+    DBG("AudioEngine: Channel count for '" + deviceName + "' not cached, returning default");
+    return 2;  // Safe default for output devices
 }
 
 //==============================================================================
@@ -175,6 +200,13 @@ int AudioEngine::getCurrentOutputChannel() const
 
 bool AudioEngine::setInputDevice(const juce::String& deviceName, int channelIndex)
 {
+    // Ensure audio is initialized before changing devices
+    if (!initialized)
+    {
+        if (!initialize())
+            return false;
+    }
+    
     auto setup = deviceManager.getAudioDeviceSetup();
     
     // Check if we're just changing the channel on the same device
@@ -191,7 +223,7 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName, int channelInde
     // Different device - need to reconfigure
     setup.inputDeviceName = deviceName;
     
-    // Get the number of input channels for this device
+    // Get the number of input channels for this device (may use cached or default value)
     int numInputChannels = getInputChannelCount(deviceName);
     
     // Enable all input channels so we can address them by index in the callback
@@ -210,6 +242,15 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName, int channelInde
     if (result.isEmpty())
     {
         selectedInputChannel = channelIndex;
+        
+        // Now that the device is open, cache the actual channel counts
+        if (auto* device = deviceManager.getCurrentAudioDevice())
+        {
+            inputChannelCountCache[deviceName] = device->getInputChannelNames().size();
+            auto currentSetup = deviceManager.getAudioDeviceSetup();
+            outputChannelCountCache[currentSetup.outputDeviceName] = device->getOutputChannelNames().size();
+        }
+        
         DBG("AudioEngine: Input device set to " + deviceName + " channel " + juce::String(channelIndex)
             + " (enabled " + juce::String(numInputChannels) + " input, " + juce::String(numOutputChannels) + " output channels)");
         return true;
@@ -221,6 +262,13 @@ bool AudioEngine::setInputDevice(const juce::String& deviceName, int channelInde
 
 bool AudioEngine::setOutputDevice(const juce::String& deviceName, int channelIndex)
 {
+    // Ensure audio is initialized before changing devices
+    if (!initialized)
+    {
+        if (!initialize())
+            return false;
+    }
+    
     auto setup = deviceManager.getAudioDeviceSetup();
     
     // Check if we're just changing the channel on the same device
@@ -237,7 +285,7 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName, int channelInd
     // Different device - need to reconfigure
     setup.outputDeviceName = deviceName;
     
-    // Get the number of output channels for this device
+    // Get the number of output channels for this device (may use cached or default value)
     int numOutputChannels = getOutputChannelCount(deviceName);
     
     // Enable all output channels so we can address them by index in the callback
@@ -256,6 +304,15 @@ bool AudioEngine::setOutputDevice(const juce::String& deviceName, int channelInd
     if (result.isEmpty())
     {
         selectedOutputChannel = channelIndex;
+        
+        // Now that the device is open, cache the actual channel counts
+        if (auto* device = deviceManager.getCurrentAudioDevice())
+        {
+            outputChannelCountCache[deviceName] = device->getOutputChannelNames().size();
+            auto currentSetup = deviceManager.getAudioDeviceSetup();
+            inputChannelCountCache[currentSetup.inputDeviceName] = device->getInputChannelNames().size();
+        }
+        
         DBG("AudioEngine: Output device set to " + deviceName + " channel " + juce::String(channelIndex) 
             + " (enabled " + juce::String(numOutputChannels) + " output, " + juce::String(numInputChannels) + " input channels)");
         return true;
@@ -574,7 +631,7 @@ bool AudioEngine::startCapture(const juce::File& outputFile, int tailMs)
     int delaySamples = static_cast<int>((50.0 / 1000.0) * currentSampleRate);
     capturePlaybackDelayRemaining.store(delaySamples, std::memory_order_release);
     capturePlaybackStarted.store(false, std::memory_order_release);
-    captureTailRemaining.store(0, std::memory_order_release);  // Will be set when playback ends
+    captureTailRemaining.store(-1, std::memory_order_release);  // -1 = playback not finished yet
     
     // Start recording first
     auto recordResult = startRecording(outputFile);
@@ -606,7 +663,7 @@ void AudioEngine::abortCapture()
     // Reset state
     captureState.store(CaptureState::IDLE, std::memory_order_release);
     capturePlaybackDelayRemaining.store(0, std::memory_order_release);
-    captureTailRemaining.store(0, std::memory_order_release);
+    captureTailRemaining.store(-1, std::memory_order_release);
     capturePlaybackStarted.store(false, std::memory_order_release);
     
     notifyCaptureStateChanged(CaptureState::IDLE);
@@ -1021,8 +1078,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
     {
         juce::int64 tailRemaining = captureTailRemaining.load(std::memory_order_acquire);
         
-        // Only count down if playback has started and finished (tail > 0 means playback finished)
-        if (tailRemaining > 0)
+        // Only count down if playback has finished (tailRemaining >= 0 means playback finished, -1 means not yet)
+        if (tailRemaining >= 0)
         {
             tailRemaining -= numSamples;
             if (tailRemaining <= 0)
@@ -1052,7 +1109,7 @@ void AudioEngine::audioDeviceIOCallbackWithContext(
                     // Reset to IDLE for next capture
                     captureState.store(CaptureState::IDLE, std::memory_order_release);
                     capturePlaybackDelayRemaining.store(0, std::memory_order_release);
-                    captureTailRemaining.store(0, std::memory_order_release);
+                    captureTailRemaining.store(-1, std::memory_order_release);
                     capturePlaybackStarted.store(false, std::memory_order_release);
                 });
             }

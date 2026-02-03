@@ -15,10 +15,29 @@ const audioState = {
 };
 
 /**
+ * Initialize audio system (triggers permission dialog if needed)
+ * Call this before using any audio functionality
+ */
+async function initializeAudio() {
+    const initialized = await backend.call('isAudioInitialized');
+    if (initialized) return true;
+    
+    console.log('Initializing audio system...');
+    const success = await backend.call('initializeAudio');
+    if (!success) {
+        console.error('Failed to initialize audio');
+    }
+    return success;
+}
+
+/**
  * Load and display audio devices
  */
 async function loadAudioDevices() {
     try {
+        // Initialize audio first (this triggers permission dialog if needed)
+        await initializeAudio();
+        
         // Fetch device names and current state
         const [inputDevices, outputDevices, state] = await Promise.all([
             backend.call('getInputDevices'),

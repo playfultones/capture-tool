@@ -7,6 +7,7 @@
 #include <playfultones_metering/playfultones_metering.h>
 #include <playfultones_wavrecorder/playfultones_wavrecorder.h>
 #include <atomic>
+#include <map>
 
 /**
  * AudioEngine handles audio device management and I/O.
@@ -31,6 +32,21 @@ public:
 
     AudioEngine();
     ~AudioEngine() override;
+
+    /**
+     * Initialize audio device access.
+     * This triggers the macOS microphone permission dialog if not already granted.
+     * Call this when user explicitly selects a device or clicks "initialize audio".
+     * Safe to call multiple times - only initializes once.
+     * @return true if initialization succeeded
+     */
+    bool initialize();
+
+    /**
+     * Check if audio has been initialized.
+     * @return true if initialize() has been called successfully
+     */
+    bool isInitialized() const { return initialized; }
 
     /** Add a listener for device list changes */
     void addListener(Listener* listener);
@@ -451,10 +467,18 @@ private:
     // Members
 
     juce::AudioDeviceManager deviceManager;
+    bool initialized = false;  // Track if audio devices have been initialized
 
     // Selected channel indices
     int selectedInputChannel = 0;
     int selectedOutputChannel = 0;
+    
+    // Cached device channel counts (to avoid creating temporary devices)
+    mutable std::map<juce::String, int> inputChannelCountCache;
+    mutable std::map<juce::String, int> outputChannelCountCache;
+    
+    // Helper to update channel count cache during device scan
+    void updateChannelCountCache() const;
 
     // Level meters (using playfultones module)
     playfultones::LevelMeter inputMeter;
@@ -504,7 +528,7 @@ private:
     
     // Capture timing (in samples)
     std::atomic<juce::int64> capturePlaybackDelayRemaining{0};  // Samples until playback starts
-    std::atomic<juce::int64> captureTailRemaining{0};           // Samples of tail remaining after playback
+    std::atomic<juce::int64> captureTailRemaining{-1};          // Samples of tail remaining after playback (-1 = playback not finished)
     std::atomic<bool> capturePlaybackStarted{false};            // Has playback started in this capture?
     
     // For notifying from audio thread to message thread

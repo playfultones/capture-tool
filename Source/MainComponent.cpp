@@ -58,6 +58,22 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
         .withResourceProvider(
             [this](const juce::String& path) { return resourceProvider(path); })
         
+        // Initialize audio (triggers permission dialog if needed)
+        // Call this before using audio devices
+        .withNativeFunction(
+            "initializeAudio",
+            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
+                bool success = audioEngine.initialize();
+                complete(juce::var(success));
+            })
+        
+        // Check if audio is initialized
+        .withNativeFunction(
+            "isAudioInitialized",
+            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
+                complete(juce::var(audioEngine.isInitialized()));
+            })
+        
         // Get list of available input device names
         .withNativeFunction(
             "getInputDevices",
@@ -479,6 +495,32 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 }
                 
                 calibrationState = CalibrationState::fromVar(args[0]);
+                complete(juce::var(true));
+            })
+        
+        //==============================================================================
+        // Visual Guide State (pass-through storage for frontend)
+        
+        // Get guide state (returns whatever the frontend stored)
+        .withNativeFunction(
+            "getGuideState",
+            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
+                complete(guideState);
+            })
+        
+        // Set guide state (stores whatever the frontend sends)
+        // Args: [state: object] - { guides: Array, cameraDeviceId: string|null }
+        .withNativeFunction(
+            "setGuideState",
+            [this](const juce::Array<juce::var>& args, Completion complete) {
+                if (args.isEmpty())
+                {
+                    guideState = juce::var();
+                }
+                else
+                {
+                    guideState = args[0];
+                }
                 complete(juce::var(true));
             })
         
@@ -1085,10 +1127,17 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                         // Update current project file
                         currentProjectFile = file;
                         
+                        // If no output folder is set, default to the project's folder
+                        if (!outputFolder.exists() || !outputFolder.isDirectory())
+                        {
+                            outputFolder = file.getParentDirectory();
+                        }
+                        
                         resultObj->setProperty("success", true);
                         resultObj->setProperty("cancelled", false);
                         resultObj->setProperty("filePath", file.getFullPathName());
                         resultObj->setProperty("fileName", file.getFileName());
+                        resultObj->setProperty("outputFolderPath", outputFolder.getFullPathName());
                     }
                     else
                     {
@@ -1852,6 +1901,13 @@ juce::var MainComponent::serializeProjectState() const
     // Captures (List with status) - use ProjectSerializer helper
     projectObj->setProperty("captures", ProjectSerializer::serializeCaptureList(captureListManager.getItems()));
     
+    //--------------------------------------------------------------------------
+    // Visual Guide State (pass-through from frontend)
+    if (!guideState.isVoid())
+    {
+        projectObj->setProperty("guideState", guideState);
+    }
+    
     return juce::var(projectObj);
 }
 
@@ -2043,6 +2099,18 @@ LoadProjectResult MainComponent::deserializeProjectState(const juce::var& projec
         captureListManager.getItemsRef().add(item);
     }
     
+    //--------------------------------------------------------------------------
+    // Visual Guide State (pass-through to frontend)
+    auto guideStateVar = projectObj->getProperty("guideState");
+    if (!guideStateVar.isVoid())
+    {
+        guideState = guideStateVar;
+    }
+    else
+    {
+        guideState = juce::var(); // Clear if not in project file
+    }
+    
     // Auto-save after load to persist any status changes (e.g., ready -> pending)
     if (outputFolder.exists())
         autoSaveProject();
@@ -2057,8 +2125,12 @@ void MainComponent::autoSaveProject()
     if (!outputFolder.exists() || !outputFolder.isDirectory())
         return;
     
-    // Save to project.rcp in the output folder
-    auto projectFile = outputFolder.getChildFile("project.rcp");
+    // Use existing project file if set, otherwise default to project.rcp in output folder
+    juce::File projectFile;
+    if (currentProjectFile.existsAsFile())
+        projectFile = currentProjectFile;
+    else
+        projectFile = outputFolder.getChildFile("project.rcp");
     
     // Serialize project state
     auto projectData = serializeProjectState();

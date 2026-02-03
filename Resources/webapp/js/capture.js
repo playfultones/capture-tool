@@ -524,11 +524,13 @@ function updateCaptureForReferenceSignal() {
 
 /**
  * Capture controls state
+ * Exposed on window for guide module integration
  */
 const captureControlsState = {
     controls: [],
     totalCaptureCount: 0
 };
+window.captureControlsState = captureControlsState;
 
 /**
  * Render a single capture control item
@@ -547,6 +549,24 @@ function renderCaptureControlItem(control) {
         ? (values.length > 0 ? `${values[0]}-${values[values.length - 1]}` : '')
         : values.join(', ');
     
+    // Check if a guide exists for this control
+    const hasGuide = window.guideState && window.guideState.hasGuideForControl(control.id);
+    
+    // Guide button HTML - show "Create Guide" or "View Guide" + delete
+    const guideButtonHtml = hasGuide
+        ? `<div class="control-guide-actions">
+               <button class="btn-view-guide" data-control-id="${control.id}" title="View guide">
+                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                       <circle cx="12" cy="12" r="10"/>
+                       <circle cx="12" cy="12" r="3"/>
+                   </svg>
+               </button>
+               <button class="btn-delete-guide" data-control-id="${control.id}" title="Delete guide">x</button>
+           </div>`
+        : `<div class="control-guide-actions">
+               <button class="btn-create-guide" data-control-id="${control.id}">+ Guide</button>
+           </div>`;
+    
     return `
         <div class="capture-control-item" data-control-id="${control.id}">
             <input type="text" 
@@ -564,6 +584,7 @@ function renderCaptureControlItem(control) {
                    value="${escapeHtml(valuesDisplay)}"
                    data-field="values">
             <span class="control-value-count">${control.valueCount} val${control.valueCount !== 1 ? 's' : ''}</span>
+            ${guideButtonHtml}
             <button class="btn-remove-control" title="Remove control">x</button>
         </div>
     `;
@@ -710,6 +731,11 @@ async function onRemoveControlClick(event) {
         const result = await backend.call('removeCaptureControl', controlId);
         
         if (result.success) {
+            // Also remove associated guide if exists
+            if (window.guideState && window.guideState.hasGuide(controlId)) {
+                window.guideState.removeGuide(controlId);
+            }
+            
             captureControlsState.controls = result.controls;
             captureControlsState.totalCaptureCount = result.totalCaptureCount;
             updateCaptureControlsDisplay();

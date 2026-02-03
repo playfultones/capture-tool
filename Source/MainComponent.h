@@ -158,6 +158,14 @@ private:
     juce::File currentProjectFile;
 
     //==============================================================================
+    // Visual Guide State (stored as JSON from frontend)
+
+    /** Guide state from frontend visual guide module.
+     *  Stored as-is (pass-through) - the frontend manages the structure.
+     */
+    juce::var guideState;
+
+    //==============================================================================
     // Output folder configuration
 
     /** Output folder for captured WAV files */

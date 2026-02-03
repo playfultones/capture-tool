@@ -22,6 +22,11 @@ async function init() {
         initAllCollapsiblePanels();
         initMeterClickHandlers();
         
+        // Initialize visual guide module (optional feature)
+        if (typeof initGuideModule === 'function') {
+            await initGuideModule();
+        }
+        
         // Set up event listeners for audio device changes
         document.getElementById('input-device').addEventListener('change', onInputDeviceChange);
         document.getElementById('input-channel').addEventListener('change', onInputChannelChange);

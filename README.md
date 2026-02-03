@@ -51,36 +51,6 @@ A standalone macOS desktop application for capturing audio through hardware unit
 
 The built application will be in `build/ReferenceCapturer_artefacts/`.
 
-## Project Structure
-
-```
-ReferenceCapturer/
-├── Source/
-│   ├── Main.cpp
-│   ├── MainComponent.h/.cpp      # WebView host, message routing
-│   ├── AudioEngine.h/.cpp        # Audio I/O, metering, capture
-│   ├── capture/
-│   │   ├── CaptureList.h/.cpp    # Capture matrix & list management
-│   │   ├── CaptureControl.h/.cpp # Control definitions
-│   │   ├── CaptureLog.h/.cpp     # JSON log generation
-│   │   └── CaptureFilename.h/.cpp
-│   └── project/
-│       └── ProjectState.h/.cpp   # Save/load projects
-├── Resources/
-│   └── webapp/
-│       ├── index.html
-│       ├── css/                  # Modular stylesheets
-│       └── js/                   # Modular JS modules
-├── modules/                      # Custom JUCE modules
-│   ├── playfultones_webbridge/   # WebView <-> C++ communication
-│   ├── playfultones_metering/    # Level metering
-│   ├── playfultones_wavrecorder/ # Threaded WAV writing
-│   └── playfultones_jsonhelpers/ # JSON utilities
-├── JUCE/                         # JUCE framework (submodule)
-├── CMakeLists.txt
-└── build.sh
-```
-
 ## Usage
 
 ### Quick Start
@@ -99,7 +69,7 @@ ReferenceCapturer/
 
 Define controls like:
 - `MODE` (discrete): UP, MID, DOWN
-- `GAIN` (continuous): 0, 25, 50, 75, 100
+- `GAIN` (discrete): 0, 25, 50, 75, 100
 - `SHAPE` (continuous): 1-10:1
 
 This generates 150 capture entries (3 x 5 x 10). If you have 2 reference signals loaded, each entry produces 2 recordings (300 total files).
@@ -127,6 +97,32 @@ Projects are saved as JSON and include:
 - Capture matrix definition
 - Capture list with completion status
 - Output folder path
+- Visual guide state (if used)
+
+### Visual Capture Guide
+
+An optional camera overlay feature to help dial in physical knob settings during capture sessions. The guide displays a webcam feed with visual overlays that can be positioned over hardware controls.
+
+![Visual Guide](docs/visualguide.webp)
+
+**Features:**
+- Camera selection and live preview
+- Create guides per control from the capture matrix (click "+ Guide" button)
+- Position guides by dragging on the canvas
+- Adjust arc range to match knob rotation limits
+- Fine-tune via the Guide Properties panel
+- Guides persist with project save/load
+- Auto-delete when associated control is removed
+
+**Usage:**
+1. Expand the "Visual Guide" section
+2. Select a camera and click "Start Camera"
+3. In the Capture Matrix, click "+ Guide" next to a control
+4. Position the guide circle over the physical knob in the camera view
+5. Drag the arc handles to match the knob's min/max rotation
+6. During capture, the guide shows tick marks for each value to help dial in settings
+
+The guide module is entirely optional and doesn't affect the capture workflow if not used.
 
 ## Development
 

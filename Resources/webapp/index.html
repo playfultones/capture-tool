@@ -13,6 +13,9 @@
     <link rel="stylesheet" href="css/capture.css">
     <link rel="stylesheet" href="css/wizard.css">
     <link rel="stylesheet" href="css/modals.css">
+    <link rel="stylesheet" href="css/guide.css">
+    <!-- Fabric.js for visual guide canvas -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
 </head>
 <body>
     <div id="app">
@@ -306,6 +309,73 @@
             </section>
             
             <!-- ============================================================ -->
+            <!-- VISUAL GUIDE SECTION (Optional) -->
+            <!-- ============================================================ -->
+            <section class="panel collapsible-panel collapsed" id="visual-guide-section">
+                <div class="collapsible-header" id="visual-guide-header">
+                    <div class="collapsible-title-row">
+                        <span class="collapse-icon">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                        <h2>Visual Guide</h2>
+                        <span class="guide-status-badge" id="guide-status-badge">Optional</span>
+                    </div>
+                </div>
+                
+                <div class="collapsible-content" id="visual-guide-content">
+                    <!-- Camera Selection -->
+                    <div class="guide-camera-section">
+                        <div class="guide-camera-controls">
+                            <div class="form-group">
+                                <label for="guide-camera-select">Camera</label>
+                                <select id="guide-camera-select">
+                                    <option value="">Select camera...</option>
+                                </select>
+                            </div>
+                            <button id="guide-camera-toggle" class="btn-secondary">Start Camera</button>
+                            <button id="guide-camera-rotate" class="btn-secondary btn-icon" title="Rotate camera 90° clockwise" disabled>
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 8a6 6 0 1 1-1.5-4"/>
+                                    <path d="M14 2v4h-4"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Camera Feed + Canvas Container -->
+                    <div class="guide-canvas-container" id="guide-canvas-container">
+                        <video id="guide-video" autoplay playsinline muted></video>
+                        <canvas id="guide-canvas"></canvas>
+                        <div class="guide-no-camera" id="guide-no-camera">
+                            Select a camera to enable visual guides
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- ============================================================ -->
+            <!-- GUIDE PROPERTIES SECTION -->
+            <!-- ============================================================ -->
+            <section class="panel collapsible-panel collapsed" id="guide-properties-section">
+                <div class="collapsible-header" id="guide-properties-header">
+                    <div class="collapsible-title-row">
+                        <span class="collapse-icon">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                                <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                        <h2>Guide Properties</h2>
+                    </div>
+                </div>
+                
+                <div class="collapsible-content" id="guide-properties-content">
+                    <p class="guide-properties__placeholder">No guide selected. Create a guide from the Capture Matrix or click on a guide in the canvas.</p>
+                </div>
+            </section>
+            
+            <!-- ============================================================ -->
             <!-- CAPTURE LIST SECTION (Collapsible) -->
             <!-- ============================================================ -->
             <section class="panel collapsible-panel" id="capture-list-section">
@@ -505,6 +575,17 @@
     <script src="js/monitor.js"></script>
     <script src="js/capture.js"></script>
     <script src="js/project.js"></script>
+    
+    <!-- Visual Guide module (optional feature) -->
+    <script src="js/guide/state/GuideState.js"></script>
+    <script src="js/guide/camera/CameraManager.js"></script>
+    <script src="js/guide/overlay/KnobGuide.js"></script>
+    <script src="js/guide/overlay/ArcMarkers.js"></script>
+    <script src="js/guide/overlay/OverlayManager.js"></script>
+    <script src="js/guide/components/ScrubberInput.js"></script>
+    <script src="js/guide/controls/GuidePropertiesPanel.js"></script>
+    <script src="js/guide/guide-init.js"></script>
+    
     <script src="js/app.js"></script>
 </body>
 </html>

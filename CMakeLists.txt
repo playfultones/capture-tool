@@ -25,6 +25,8 @@ juce_add_gui_app(ReferenceCapturer
     ICON_SMALL "${CMAKE_SOURCE_DIR}/Resources/icons/icon_small.png"
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "Reference Capturer needs microphone access to capture audio from your hardware."
+    CAMERA_PERMISSION_ENABLED TRUE
+    CAMERA_PERMISSION_TEXT "Reference Capturer needs camera access for the visual capture guide overlay feature."
 )
 
 # Collect all source files from Source/ directory

@@ -65,6 +65,9 @@ async function handleStartupNewProject() {
         updateProjectDisplay();
         hideStartupModal();
         
+        // Reload output folder state (backend sets it to project folder by default)
+        await loadOutputFolderState();
+        
         console.log(`New project created: ${result.filePath}`);
     } else {
         alert('Failed to create project: ' + (result.errorMessage || 'Unknown error'));
@@ -174,6 +177,19 @@ async function refreshAllUIState() {
         // Update capture UI for reference signal
         updateCaptureForReferenceSignal();
         
+        // Restore visual guide state if module is loaded
+        if (typeof restoreGuideState === 'function') {
+            try {
+                const guideData = await backend.call('getGuideState');
+                if (guideData) {
+                    await restoreGuideState(guideData);
+                }
+            } catch (guideError) {
+                // Guide state loading is optional - don't fail project load
+                console.warn('Could not restore guide state:', guideError);
+            }
+        }
+        
     } catch (error) {
         console.error('Error refreshing UI state:', error);
     }
@@ -244,6 +260,11 @@ async function resetUIToDefaults() {
     recordingTailMs = 500;
     const tailSelect = document.getElementById('recording-tail');
     if (tailSelect) tailSelect.value = '500';
+    
+    // Clear visual guide state if module is loaded
+    if (typeof clearGuideState === 'function') {
+        clearGuideState();
+    }
 }
 
 /**
@@ -273,6 +294,9 @@ async function onProjectNewRequested() {
         
         updateProjectDisplay();
         hideStartupModal();
+        
+        // Reload output folder state (backend sets it to project folder by default)
+        await loadOutputFolderState();
         
         console.log(`New project created: ${result.filePath}`);
     } else {

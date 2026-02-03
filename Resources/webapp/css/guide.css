@@ -1,0 +1,380 @@
+/* ==========================================================================
+   Visual Guide CSS - Camera overlay and guide properties
+   Dark theme only - uses existing CSS variables from base.css
+   ========================================================================== */
+
+/* ==========================================================================
+   Camera Container & Canvas Overlay
+   ========================================================================== */
+
+.guide-canvas-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    max-height: 400px;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Video element */
+#guide-video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background-color: #000000;
+    transition: transform 0.2s ease;
+}
+
+/* Video rotation classes - only rotates the video, not the overlay canvas */
+#guide-video.rotated-90 {
+    transform: rotate(90deg);
+    /* Swap width/height for 90/270 rotations to fit in container */
+    width: auto;
+    height: auto;
+    max-width: 133.33%;  /* 4/3 ratio adjustment */
+    max-height: 133.33%;
+}
+
+#guide-video.rotated-180 {
+    transform: rotate(180deg);
+}
+
+#guide-video.rotated-270 {
+    transform: rotate(270deg);
+    /* Swap width/height for 90/270 rotations to fit in container */
+    width: auto;
+    height: auto;
+    max-width: 133.33%;
+    max-height: 133.33%;
+}
+
+/* Fabric.js overlay canvas */
+#guide-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+/* Fabric.js creates a wrapper - position it properly */
+.guide-canvas-container .canvas-container {
+    position: absolute !important;
+    top: 0;
+    left: 0;
+}
+
+/* No camera placeholder */
+.guide-no-camera {
+    position: absolute;
+    z-index: 1;
+    color: var(--text-secondary);
+    font-style: italic;
+    text-align: center;
+    padding: 1rem;
+}
+
+.guide-canvas-container.has-camera .guide-no-camera {
+    display: none;
+}
+
+/* Guide creation mode - crosshair cursor */
+.guide-canvas-container.creating {
+    cursor: crosshair;
+}
+
+/* ==========================================================================
+   Camera Controls
+   ========================================================================== */
+
+.guide-camera-section {
+    margin-bottom: 1rem;
+}
+
+.guide-camera-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.guide-camera-controls .form-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+#guide-camera-toggle {
+    flex-shrink: 0;
+}
+
+#guide-camera-rotate {
+    flex-shrink: 0;
+}
+
+/* Icon button styling */
+.btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    min-width: unset;
+}
+
+.btn-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.btn-icon:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Guide Properties Panel
+   ========================================================================== */
+
+.guide-properties__placeholder {
+    margin: 0;
+    padding: 1rem;
+    color: var(--text-secondary);
+    font-style: italic;
+    text-align: center;
+}
+
+.guide-properties__info {
+    margin-bottom: 1rem;
+}
+
+.guide-properties__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.375rem;
+}
+
+.guide-properties__label {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    flex-shrink: 0;
+}
+
+.guide-properties__value {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.guide-properties__group {
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.guide-properties__group:last-of-type {
+    border-bottom: none;
+}
+
+.guide-properties__group-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.375rem;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.guide-properties__actions {
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+}
+
+.guide-properties__delete-btn {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    background-color: rgba(248, 113, 113, 0.15);
+    color: var(--error);
+    border: 1px solid var(--error);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.guide-properties__delete-btn:hover {
+    background-color: rgba(248, 113, 113, 0.25);
+}
+
+/* ==========================================================================
+   Scrubber Input Component
+   ========================================================================== */
+
+.scrubber-input {
+    display: inline-flex;
+    align-items: center;
+    min-width: 60px;
+}
+
+.scrubber-input__display {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    cursor: ew-resize;
+    user-select: none;
+    min-width: 50px;
+    color: var(--text-primary);
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.scrubber-input__display:hover {
+    border-color: var(--accent);
+    background-color: var(--bg-secondary);
+}
+
+.scrubber-input--dragging .scrubber-input__display {
+    border-color: var(--accent);
+    background-color: var(--bg-secondary);
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.2);
+}
+
+.scrubber-input__input {
+    width: 100%;
+    min-width: 50px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    outline: none;
+}
+
+.scrubber-input__input:focus {
+    box-shadow: 0 0 0 2px rgba(74, 158, 255, 0.3);
+}
+
+/* Hide number input spinners */
+.scrubber-input__input::-webkit-outer-spin-button,
+.scrubber-input__input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.scrubber-input__input[type=number] {
+    -moz-appearance: textfield;
+}
+
+/* ==========================================================================
+   Guide Button in Capture Matrix
+   ========================================================================== */
+
+.control-guide-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.btn-create-guide {
+    height: 28px;
+    padding: 0 0.5rem;
+    font-size: 0.6875rem;
+    font-family: inherit;
+    white-space: nowrap;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.btn-create-guide:hover {
+    background: rgba(74, 158, 255, 0.15);
+}
+
+.btn-create-guide:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-view-guide {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(74, 222, 128, 0.15);
+    color: var(--success);
+    border: 1px solid var(--success);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.btn-view-guide:hover {
+    background: rgba(74, 222, 128, 0.25);
+}
+
+.btn-view-guide svg {
+    width: 14px;
+    height: 14px;
+}
+
+.btn-delete-guide {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-delete-guide:hover {
+    color: var(--error);
+    background: rgba(248, 113, 113, 0.15);
+}
+
+/* ==========================================================================
+   Visual Guide Section Status Badge
+   ========================================================================== */
+
+.guide-status-badge {
+    font-size: 0.625rem;
+    font-weight: 500;
+    padding: 0.125rem 0.375rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    background-color: var(--bg-tertiary);
+    color: var(--text-secondary);
+    margin-left: 0.5rem;
+}
+
+.guide-status-badge.active {
+    background-color: rgba(74, 222, 128, 0.15);
+    color: var(--success);
+}
