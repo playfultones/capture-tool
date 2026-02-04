@@ -18,5 +18,9 @@ cmake --build "$BUILD_DIR"
 echo "Copying webapp resources..."
 rsync -a --delete Resources/webapp/ "$APP_BUNDLE/Contents/Resources/webapp/"
 
+# Re-sign the app after modifying resources
+echo "Re-signing app bundle..."
+codesign --force --deep --sign - "$APP_BUNDLE"
+
 echo "Build complete!"
 echo "Application: $APP_BUNDLE"

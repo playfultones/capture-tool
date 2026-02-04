@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-02-04
+
+### Changed
+- Request high channel count to support multi-channel interfaces
+
+### Fixed
+- Prevent crashes during device reconfiguration by managing audio callbacks
+- Ensure app bundle is re-signed after modifying resources
+
 ## [0.2.0] - 2026-02-03
 
 ### Added
