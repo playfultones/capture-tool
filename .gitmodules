@@ -1,3 +1,12 @@
 [submodule "JUCE"]
 	path = JUCE
 	url = https://github.com/juce-framework/JUCE.git
+[submodule "modules/playfultones_jsonhelpers"]
+	path = modules/playfultones_jsonhelpers
+	url = git@github.com:playfultones/playfultones_jsonhelpers.git
+[submodule "modules/playfultones_metering"]
+	path = modules/playfultones_metering
+	url = git@github.com:playfultones/playfultones_metering.git
+[submodule "modules/playfultones_webbridge"]
+	path = modules/playfultones_webbridge
+	url = git@github.com:playfultones/playfultones_webbridge.git

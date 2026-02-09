@@ -333,16 +333,9 @@ juce::Array<int> AudioEngine::getAvailableSampleRates() const {
   if (device == nullptr)
     return rates;
 
-  // Get available sample rates from the device
-  auto availableRates = device->getAvailableSampleRates();
-
-  // Filter to only include our supported rates: 44100, 48000, 96000
-  const int supportedRates[] = {44100, 48000, 96000};
-
-  for (int rate : supportedRates) {
-    if (availableRates.contains(static_cast<double>(rate))) {
-      rates.add(rate);
-    }
+  // Return all sample rates supported by the device
+  for (double rate : device->getAvailableSampleRates()) {
+    rates.add(static_cast<int>(rate));
   }
 
   return rates;
@@ -449,13 +442,13 @@ AudioEngine::loadReferenceSignal(const juce::File &file) {
     return result;
   }
 
-  // Validate sample rate (44.1/48/96 kHz)
+  // Validate sample rate matches current device sample rate
   int fileSampleRate = static_cast<int>(reader->sampleRate);
-  if (fileSampleRate != 44100 && fileSampleRate != 48000 &&
-      fileSampleRate != 96000) {
+  int deviceSampleRate = getCurrentSampleRate();
+  if (deviceSampleRate > 0 && fileSampleRate != deviceSampleRate) {
     result.errorMessage =
-        "Unsupported sample rate: " + juce::String(fileSampleRate) +
-        " Hz. Supported rates: 44.1, 48, 96 kHz";
+        "Sample rate mismatch: file is " + juce::String(fileSampleRate) +
+        " Hz but device is set to " + juce::String(deviceSampleRate) + " Hz";
     return result;
   }
 
@@ -598,6 +591,9 @@ bool AudioEngine::startCapture(const juce::File &outputFile, int tailMs) {
   // Store capture parameters
   captureOutputFile = outputFile;
   captureTailMs = tailMs;
+
+  // Reset peak hold meters so we capture the max levels for this capture only
+  resetPeakHold();
 
   // Calculate delay: 50ms of recording before playback starts
   int delaySamples = static_cast<int>((50.0 / 1000.0) * currentSampleRate);

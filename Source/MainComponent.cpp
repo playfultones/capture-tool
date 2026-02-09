@@ -1705,7 +1705,7 @@ void MainComponent::captureComplete(const AudioEngine::CaptureResult& result)
                 currentTailMs = referenceSignals[currentCaptureSignalIndex].tailMs;
             }
             
-            // Get level info from the audio engine (last capture levels)
+            // Get level info from the audio engine (max levels during capture)
             auto inputMeters = audioEngine.getInputMeterValues();
             captureLogManager.appendCapture(
                 *captureItem,
@@ -1713,8 +1713,8 @@ void MainComponent::captureComplete(const AudioEngine::CaptureResult& result)
                 audioEngine.getCurrentSampleRate(),
                 currentTailMs,
                 result.durationSeconds,
-                inputMeters.peakDb,
-                inputMeters.rmsDb);
+                inputMeters.peakHoldDb,
+                inputMeters.rmsHoldDb);
         }
         
         // Check if there are more signals to capture
