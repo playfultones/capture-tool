@@ -1200,46 +1200,14 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
         //            cancelled?: boolean, referenceSignalMissing?: boolean, missingReferenceSignalPath?: string }
         .withNativeFunction(
             "loadProject",
-            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
-                // Determine default directory: prefer output folder, then current project location, then documents
-                juce::File defaultDir;
-                if (outputFolder.exists() && outputFolder.isDirectory())
-                    defaultDir = outputFolder;
-                else if (currentProjectFile.existsAsFile())
-                    defaultDir = currentProjectFile.getParentDirectory();
-                else
-                    defaultDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
-                
-                // Create file chooser for opening project
-                fileChooser = std::make_unique<juce::FileChooser>(
-                    "Open Project",
-                    defaultDir,
-                    "*.rcp;*.json"
-                );
-                
-                // Launch async open dialog
-                auto chooserFlags = juce::FileBrowserComponent::openMode 
-                    | juce::FileBrowserComponent::canSelectFiles;
-                
-                fileChooser->launchAsync(chooserFlags, [this, complete](const juce::FileChooser& fc) {
-                    auto results = fc.getResults();
-                    
-                    if (results.isEmpty())
-                    {
-                        // User cancelled
-                        auto* resultObj = new juce::DynamicObject();
-                        resultObj->setProperty("cancelled", true);
-                        resultObj->setProperty("success", false);
-                        complete(juce::var(resultObj));
-                        return;
-                    }
-                    
-                    auto file = results.getFirst();
-                    
+            [this](const juce::Array<juce::var>& args, Completion complete) {
+                // Shared load path for both the chooser callback and the e2e
+                // path-injection route below.
+                auto loadFromFile = [this, complete](const juce::File& file) {
                     // Read and parse the project file
                     auto jsonString = file.loadFileAsString();
                     auto projectData = juce::JSON::parse(jsonString);
-                    
+
                     if (!projectData.isObject())
                     {
                         auto* resultObj = new juce::DynamicObject();
@@ -1249,7 +1217,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                         complete(juce::var(resultObj));
                         return;
                     }
-                    
+
                     // Deserialize on the message thread to avoid CoreAudio threading issues
                     juce::MessageManager::callAsync([this, complete, file, projectData]() {
                         // Deserialize the project state
@@ -1286,9 +1254,71 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                         
                         complete(juce::var(resultObj));
                     });
+                };
+
+#if REFCAP_E2E
+                // e2e automation: native file choosers cannot be driven by the
+                // test harness, so allow injecting an explicit path one level
+                // below the dialog. Only honored when launched by the e2e
+                // driver (--e2e-test-port).
+                if (E2EBridge::isRequested() && !args.isEmpty() && args[0].isString())
+                {
+                    auto file = juce::File(args[0].toString());
+
+                    if (!file.existsAsFile())
+                    {
+                        auto* resultObj = new juce::DynamicObject();
+                        resultObj->setProperty("cancelled", false);
+                        resultObj->setProperty("success", false);
+                        resultObj->setProperty("errorMessage", "Project file not found: " + file.getFullPathName());
+                        complete(juce::var(resultObj));
+                        return;
+                    }
+
+                    loadFromFile(file);
+                    return;
+                }
+#else
+                juce::ignoreUnused(args);
+#endif
+
+                // Determine default directory: prefer output folder, then current project location, then documents
+                juce::File defaultDir;
+                if (outputFolder.exists() && outputFolder.isDirectory())
+                    defaultDir = outputFolder;
+                else if (currentProjectFile.existsAsFile())
+                    defaultDir = currentProjectFile.getParentDirectory();
+                else
+                    defaultDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+
+                // Create file chooser for opening project
+                fileChooser = std::make_unique<juce::FileChooser>(
+                    "Open Project",
+                    defaultDir,
+                    "*.rcp;*.json"
+                );
+
+                // Launch async open dialog
+                auto chooserFlags = juce::FileBrowserComponent::openMode
+                    | juce::FileBrowserComponent::canSelectFiles;
+
+                fileChooser->launchAsync(chooserFlags, [complete, loadFromFile](const juce::FileChooser& fc) {
+                    auto results = fc.getResults();
+
+                    if (results.isEmpty())
+                    {
+                        // User cancelled
+                        auto* resultObj = new juce::DynamicObject();
+                        resultObj->setProperty("cancelled", true);
+                        resultObj->setProperty("success", false);
+                        complete(juce::var(resultObj));
+                        return;
+                    }
+
+                    loadFromFile(results.getFirst());
                 });
             })
-        
+
         // Create new project (reset all state to defaults)
         // Returns: { success: boolean }
         .withNativeFunction(

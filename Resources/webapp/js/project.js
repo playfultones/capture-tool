@@ -78,8 +78,13 @@ async function handleStartupNewProject() {
 /**
  * Handle "Open Project" from startup modal
  */
-async function handleStartupOpenProject() {
-    const result = await backend.call('loadProject');
+async function handleStartupOpenProject(pathForE2E) {
+    // Normally invoked as a click handler (argument is the click Event) and the
+    // backend opens a file chooser. The e2e harness calls this directly with a
+    // string path, which the backend loads without showing the chooser.
+    const result = await (typeof pathForE2E === 'string'
+        ? backend.call('loadProject', pathForE2E)
+        : backend.call('loadProject'));
     
     if (result.cancelled) {
         // User cancelled, stay on startup modal
