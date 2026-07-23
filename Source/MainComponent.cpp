@@ -138,6 +138,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 auto channelIndex = static_cast<int>(args[1]);
                 
                 bool success = audioEngine.setInputDevice(deviceName, channelIndex);
+                if (success) markProjectDirty();
                 complete(juce::var(success));
             })
         
@@ -156,6 +157,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 auto channelIndex = static_cast<int>(args[1]);
                 
                 bool success = audioEngine.setOutputDevice(deviceName, channelIndex);
+                if (success) markProjectDirty();
                 complete(juce::var(success));
             })
         
@@ -229,6 +231,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 
                 auto sampleRate = static_cast<int>(args[0]);
                 bool success = audioEngine.setSampleRate(sampleRate);
+                if (success) markProjectDirty();
                 complete(juce::var(success));
             })
         
@@ -348,6 +351,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                         }
                         
                         referenceSignals.remove(i);
+                        markProjectDirty();
                         complete(juce::var(true));
                         return;
                     }
@@ -381,6 +385,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 if (auto* signal = findSignalById(id))
                 {
                     signal->tailMs = newTailMs;
+                    markProjectDirty();
                     complete(juce::var(newTailMs));
                     return;
                 }
@@ -495,6 +500,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 }
                 
                 calibrationState = CalibrationState::fromVar(args[0]);
+                markProjectDirty();
                 complete(juce::var(true));
             })
         
@@ -521,6 +527,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 {
                     guideState = args[0];
                 }
+                markProjectDirty();
                 complete(juce::var(true));
             })
         
@@ -569,6 +576,10 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                         resultObj->setProperty("success", true);
                         resultObj->setProperty("folderPath", folder.getFullPathName());
                         resultObj->setProperty("isWritable", isWritable);
+
+                        // Persist the new output folder (and enable auto-save now
+                        // that we have somewhere to write project.rcp).
+                        markProjectDirty();
                     }
                     else
                     {
@@ -794,7 +805,8 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 ControlType type = (typeStr == "continuous") ? ControlType::CONTINUOUS : ControlType::DISCRETE;
                 
                 juce::String newId = captureControlManager.addControl(name, type, valuesInput);
-                
+                markProjectDirty();
+
                 auto* resultObj = new juce::DynamicObject();
                 resultObj->setProperty("success", true);
                 resultObj->setProperty("id", newId);
@@ -817,7 +829,8 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 
                 juce::String id = args[0].toString();
                 bool success = captureControlManager.removeControl(id);
-                
+                if (success) markProjectDirty();
+
                 auto* resultObj = new juce::DynamicObject();
                 resultObj->setProperty("success", success);
                 resultObj->setProperty("controls", captureControlManager.toVar());
@@ -845,7 +858,8 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 ControlType type = (typeStr == "continuous") ? ControlType::CONTINUOUS : ControlType::DISCRETE;
                 
                 bool success = captureControlManager.updateControl(id, name, type, valuesInput);
-                
+                if (success) markProjectDirty();
+
                 auto* resultObj = new juce::DynamicObject();
                 resultObj->setProperty("success", success);
                 resultObj->setProperty("controls", captureControlManager.toVar());
@@ -869,7 +883,8 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
             "generateCaptureList",
             [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
                 captureListManager.generate(captureControlManager);
-                
+                markProjectDirty();
+
                 auto* resultObj = new juce::DynamicObject();
                 resultObj->setProperty("success", true);
                 resultObj->setProperty("captureList", captureListManager.toVar());
@@ -890,6 +905,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
             "clearCaptureList",
             [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
                 captureListManager.clear();
+                markProjectDirty();
                 complete(juce::var(true));
             })
         
@@ -928,7 +944,8 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 }
                 
                 bool success = captureListManager.setStatus(id, newStatus);
-                
+                if (success) markProjectDirty();
+
                 auto* resultObj = new juce::DynamicObject();
                 resultObj->setProperty("success", success);
                 resultObj->setProperty("captureList", captureListManager.toVar());
@@ -1527,11 +1544,12 @@ juce::var MainComponent::addReferenceSignalFromPath(const juce::String& filePath
     signal.tailMs = 500; // Default tail
     
     referenceSignals.add(signal);
-    
+    markProjectDirty();
+
     resultObj->setProperty("success", true);
     resultObj->setProperty("id", signal.id);
     resultObj->setProperty("signal", signal.toVar());
-    
+
     return juce::var(resultObj);
 }
 
@@ -1606,6 +1624,16 @@ void MainComponent::timerCallback()
     // Emit to frontend
     emitEvent("meterUpdate", juce::var(meterData));
     
+    // Flush a debounced auto-save if the project was recently marked dirty and
+    // has settled (no further changes within the debounce window). This coalesces
+    // rapid changes (slider drags, quick edits) into a single file write.
+    if (projectDirty
+        && (juce::Time::getMillisecondCounter() - lastDirtyMs) >= autoSaveDebounceMs)
+    {
+        projectDirty = false;
+        autoSaveProject();
+    }
+
     // Check for playback state changes (e.g., playback finished at end of file)
     bool currentPlaybackState = audioEngine.isReferencePlaybackActive();
     if (currentPlaybackState != lastPlaybackState)
@@ -2121,32 +2149,45 @@ LoadProjectResult MainComponent::deserializeProjectState(const juce::var& projec
 
 void MainComponent::autoSaveProject()
 {
-    // Only auto-save if we have a valid output folder
-    if (!outputFolder.exists() || !outputFolder.isDirectory())
-        return;
-    
-    // Use existing project file if set, otherwise default to project.rcp in output folder
+    // Determine where to save: prefer an already-open project file, otherwise
+    // fall back to project.rcp in the output folder. If we have neither, there
+    // is nowhere to persist to yet.
     juce::File projectFile;
     if (currentProjectFile.existsAsFile())
         projectFile = currentProjectFile;
-    else
+    else if (outputFolder.exists() && outputFolder.isDirectory())
         projectFile = outputFolder.getChildFile("project.rcp");
-    
+    else
+        return;
+
     // Serialize project state
     auto projectData = serializeProjectState();
     auto jsonString = juce::JSON::toString(projectData, true);
-    
+
     // Write to file (silent, no error reporting to UI)
     if (projectFile.replaceWithText(jsonString))
     {
         // Update current project file reference
         currentProjectFile = projectFile;
         DBG("Auto-saved project to: " + projectFile.getFullPathName());
+
+        // Notify the frontend so it can show a "saved" indicator + timestamp.
+        auto* savedObj = new juce::DynamicObject();
+        savedObj->setProperty("path", projectFile.getFullPathName());
+        savedObj->setProperty("fileName", projectFile.getFileName());
+        savedObj->setProperty("timeMs", (juce::int64) juce::Time::getCurrentTime().toMilliseconds());
+        emitEvent("projectSaved", juce::var(savedObj));
     }
     else
     {
         DBG("Failed to auto-save project to: " + projectFile.getFullPathName());
     }
+}
+
+void MainComponent::markProjectDirty()
+{
+    projectDirty = true;
+    lastDirtyMs = juce::Time::getMillisecondCounter();
 }
 
 //==============================================================================

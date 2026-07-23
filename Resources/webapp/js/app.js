@@ -50,6 +50,10 @@ async function init() {
         // Subscribe to project events from native menu
         backend.onEvent('projectNewRequested', onProjectNewRequested);
         backend.onEvent('projectLoaded', onProjectLoaded);
+
+        // Subscribe to auto-save notifications (updates the header save indicator)
+        backend.onEvent('projectSaved', onProjectSaved);
+        updateSaveStatusDisplay();
         
     } catch (error) {
         console.error('Initialization failed:', error);

@@ -54,6 +54,21 @@ header .project-name.has-file {
     color: var(--accent);
 }
 
+header .save-status {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-left: 0.5rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0.75;
+}
+
+header .save-status.saved {
+    color: var(--success, #4caf50);
+    opacity: 1;
+}
+
 /* Main content */
 main {
     flex: 1;

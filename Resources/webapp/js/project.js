@@ -61,10 +61,11 @@ async function handleStartupNewProject() {
         projectState.filePath = result.filePath;
         projectState.fileName = result.fileName;
         projectState.hasSavedProject = true;
-        
+
         updateProjectDisplay();
+        markSavedNow();
         hideStartupModal();
-        
+
         // Reload output folder state (backend sets it to project folder by default)
         await loadOutputFolderState();
         
@@ -291,10 +292,11 @@ async function onProjectNewRequested() {
         projectState.filePath = result.filePath;
         projectState.fileName = result.fileName;
         projectState.hasSavedProject = true;
-        
+
         updateProjectDisplay();
+        markSavedNow();
         hideStartupModal();
-        
+
         // Reload output folder state (backend sets it to project folder by default)
         await loadOutputFolderState();
         
@@ -338,7 +340,63 @@ async function onProjectLoaded(data) {
 function initProjectActions() {
     // Initialize startup modal buttons
     initStartupModal();
-    
+
     // Show startup modal on launch
     showStartupModal();
+
+    // Keep the "saved N ago" label fresh even when nothing changes
+    setInterval(updateSaveStatusDisplay, 15000);
+}
+
+//==============================================================================
+// Auto-save status indicator
+
+/** Epoch millis of the last successful auto-save (null = never) */
+let lastSavedMs = null;
+
+/**
+ * Render the save-status label in the header.
+ */
+function updateSaveStatusDisplay() {
+    const el = document.getElementById('save-status');
+    if (!el) return;
+
+    if (lastSavedMs == null) {
+        el.textContent = 'Not saved yet';
+        el.classList.remove('saved');
+        el.title = 'No changes have been auto-saved yet';
+        return;
+    }
+
+    const secs = Math.max(0, Math.floor((Date.now() - lastSavedMs) / 1000));
+    let ago;
+    if (secs < 5) ago = 'just now';
+    else if (secs < 60) ago = `${secs}s ago`;
+    else if (secs < 3600) ago = `${Math.floor(secs / 60)}m ago`;
+    else ago = `${Math.floor(secs / 3600)}h ago`;
+
+    const t = new Date(lastSavedMs);
+    const hh = String(t.getHours()).padStart(2, '0');
+    const mm = String(t.getMinutes()).padStart(2, '0');
+
+    el.textContent = `Saved ${ago}`;
+    el.classList.add('saved');
+    el.title = `Last auto-saved at ${hh}:${mm}`;
+}
+
+/**
+ * Handle the backend "projectSaved" event (emitted after each auto-save).
+ */
+function onProjectSaved(data) {
+    lastSavedMs = (data && data.timeMs) ? data.timeMs : Date.now();
+    updateSaveStatusDisplay();
+}
+
+/**
+ * Mark the project as saved "now" (used e.g. right after loading a project,
+ * which reflects the on-disk state).
+ */
+function markSavedNow() {
+    lastSavedMs = Date.now();
+    updateSaveStatusDisplay();
 }

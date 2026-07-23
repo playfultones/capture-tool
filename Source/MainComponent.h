@@ -150,12 +150,24 @@ private:
     LoadProjectResult deserializeProjectState(const juce::var& projectData);
 
     /** Auto-save project to output folder (silent, no dialog)
-     *  Saves to project.rcp in the output folder
+     *  Saves to the current project file (or project.rcp in the output folder).
+     *  Emits a "projectSaved" event to the frontend on success.
      */
     void autoSaveProject();
 
+    /** Mark the project as having unsaved changes. A debounced auto-save is
+     *  flushed from the timer callback shortly after the last change, so rapid
+     *  changes (e.g. slider drags) coalesce into a single write.
+     */
+    void markProjectDirty();
+
     /** Current project file path (empty if not saved) */
     juce::File currentProjectFile;
+
+    /** Debounced auto-save state */
+    bool projectDirty = false;
+    juce::uint32 lastDirtyMs = 0;
+    static constexpr juce::uint32 autoSaveDebounceMs = 400;
 
     //==============================================================================
     // Visual Guide State (stored as JSON from frontend)
