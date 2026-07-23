@@ -10,3 +10,6 @@
 [submodule "modules/playfultones_webbridge"]
 	path = modules/playfultones_webbridge
 	url = git@github.com:playfultones/playfultones_webbridge.git
+[submodule "juce-end-to-end"]
+	path = juce-end-to-end
+	url = https://github.com/FocusriteGroup/juce-end-to-end.git
