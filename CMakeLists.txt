@@ -32,6 +32,7 @@ juce_add_gui_app(ReferenceCapturer
 # Collect all source files from Source/ directory
 file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.mm"
     "${CMAKE_CURRENT_SOURCE_DIR}/Source/*.h"
 )
 
@@ -50,6 +51,8 @@ target_compile_definitions(ReferenceCapturer
 
 target_link_libraries(ReferenceCapturer
     PRIVATE
+        # macOS microphone (TCC) permission request via AVFoundation
+        "-framework AVFoundation"
         # Custom modules
         playfultones_metering
         playfultones_wavrecorder

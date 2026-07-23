@@ -1,5 +1,6 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "MainComponent.h"
+#include "MicPermission.h"
 
 //==============================================================================
 // Menu command IDs
@@ -34,8 +35,17 @@ public:
 
     void initialise(const juce::String& /*commandLine*/) override
     {
+        // Request microphone access right away at launch. JUCE does not request
+        // TCC mic access on macOS, so without this the OS may never prompt and
+        // CoreAudio input silently returns zeros. (Camera access stays deferred
+        // until the visual guide is actually used.)
+        macpermissions::requestMicrophoneAccess([](bool granted) {
+            juce::Logger::writeToLog(granted ? "Microphone access granted"
+                                             : "Microphone access denied");
+        });
+
         mainWindow = std::make_unique<MainWindow>(getApplicationName());
-        
+
         // Set up the native menu bar on macOS
 #if JUCE_MAC
         juce::MenuBarModel::setMacMainMenu(this);
