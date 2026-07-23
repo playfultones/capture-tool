@@ -23,5 +23,6 @@ docs/*.md
 CLAUDE.md
 .tickets/
 
-# Release scripts (internal only)
+# Release scripts + signing config (internal only)
 scripts/
+.env
