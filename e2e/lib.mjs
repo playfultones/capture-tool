@@ -11,10 +11,12 @@ import {fileURLToPath} from 'url';
 const here = dirname(fileURLToPath(import.meta.url));
 
 export const outDir = join(here, 'out');
-export const defaultAppPath = join(
-  here,
-  '../build-e2e/ReferenceCapturer_artefacts/Debug/Reference Capturer.app/Contents/MacOS/Reference Capturer'
-);
+export const defaultAppPath =
+  process.env.APP_PATH ||
+  join(
+    here,
+    '../build-e2e/ReferenceCapturer_artefacts/Debug/Reference Capturer.app/Contents/MacOS/Reference Capturer'
+  );
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
