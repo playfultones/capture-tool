@@ -583,8 +583,9 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                         resultObj->setProperty("folderPath", folder.getFullPathName());
                         resultObj->setProperty("isWritable", isWritable);
 
-                        // Persist the new output folder (and enable auto-save now
-                        // that we have somewhere to write project.rcp).
+                        // Persist the new output folder. Autosave only writes if a
+                        // named project file already exists; it no longer fabricates
+                        // a project.rcp just because an output folder is set.
                         markProjectDirty();
                     }
                     else
@@ -1220,17 +1221,21 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
 
                     // Deserialize on the message thread to avoid CoreAudio threading issues
                     juce::MessageManager::callAsync([this, complete, file, projectData]() {
+                        // Point currentProjectFile at the file being opened *before*
+                        // deserializing: deserializeProjectState() runs a post-load
+                        // autosave, and it must target this file rather than fall
+                        // through to a fabricated project.rcp. Restore on failure.
+                        auto previousProjectFile = currentProjectFile;
+                        currentProjectFile = file;
+
                         // Deserialize the project state
                         auto loadResult = deserializeProjectState(projectData);
-                        
+
                         auto* resultObj = new juce::DynamicObject();
                         resultObj->setProperty("cancelled", false);
-                        
+
                         if (loadResult.success)
                         {
-                            // Update current project file
-                            currentProjectFile = file;
-                            
                             resultObj->setProperty("success", true);
                             resultObj->setProperty("filePath", file.getFullPathName());
                             resultObj->setProperty("fileName", file.getFileName());
@@ -1248,10 +1253,11 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                         }
                         else
                         {
+                            currentProjectFile = previousProjectFile;
                             resultObj->setProperty("success", false);
                             resultObj->setProperty("errorMessage", loadResult.errorMessage);
                         }
-                        
+
                         complete(juce::var(resultObj));
                     });
                 };
@@ -2185,16 +2191,15 @@ LoadProjectResult MainComponent::deserializeProjectState(const juce::var& projec
 
 void MainComponent::autoSaveProject()
 {
-    // Determine where to save: prefer an already-open project file, otherwise
-    // fall back to project.rcp in the output folder. If we have neither, there
-    // is nowhere to persist to yet.
-    juce::File projectFile;
-    if (currentProjectFile.existsAsFile())
-        projectFile = currentProjectFile;
-    else if (outputFolder.exists() && outputFolder.isDirectory())
-        projectFile = outputFolder.getChildFile("project.rcp");
-    else
+    // Only autosave to an explicitly-saved project file. If there is no named
+    // project yet, do nothing rather than fabricating a project.rcp next to the
+    // output folder: that silent fallback littered stray files and, worse, could
+    // become the file everything subsequently autosaved to. A named project is
+    // established by saveProjectAs or by opening an existing file.
+    if (!currentProjectFile.existsAsFile())
         return;
+
+    juce::File projectFile = currentProjectFile;
 
     // Serialize project state
     auto projectData = serializeProjectState();
@@ -2203,8 +2208,6 @@ void MainComponent::autoSaveProject()
     // Write to file (silent, no error reporting to UI)
     if (projectFile.replaceWithText(jsonString))
     {
-        // Update current project file reference
-        currentProjectFile = projectFile;
         DBG("Auto-saved project to: " + projectFile.getFullPathName());
 
         // Notify the frontend so it can show a "saved" indicator + timestamp.
@@ -2295,20 +2298,19 @@ void MainComponent::performMenuAction(const juce::String& action)
             
             // Deserialize on the message thread to avoid CoreAudio threading issues
             juce::MessageManager::callAsync([this, file, projectData]() {
+                // Point currentProjectFile at the file being opened *before*
+                // deserializing so the post-load autosave targets it (see the
+                // loadProject native function for the full rationale).
+                auto previousProjectFile = currentProjectFile;
+                currentProjectFile = file;
+
                 // Deserialize the project state
                 auto loadResult = deserializeProjectState(projectData);
-                
+
                 auto* resultObj = new juce::DynamicObject();
-                
+
                 if (loadResult.success)
                 {
-                    // Update current project file
-                    currentProjectFile = file;
-                    
-                    // Debug logging
-                    juce::File logFile(juce::File::getSpecialLocation(juce::File::userDesktopDirectory).getChildFile("rc_debug.log"));
-                    logFile.appendText("openProject menu: set currentProjectFile to: " + currentProjectFile.getFullPathName() + "\n");
-                    
                     resultObj->setProperty("success", true);
                     resultObj->setProperty("filePath", file.getFullPathName());
                     resultObj->setProperty("fileName", file.getFileName());
@@ -2322,10 +2324,11 @@ void MainComponent::performMenuAction(const juce::String& action)
                 }
                 else
                 {
+                    currentProjectFile = previousProjectFile;
                     resultObj->setProperty("success", false);
                     resultObj->setProperty("errorMessage", loadResult.errorMessage);
                 }
-                
+
                 // Notify frontend about the loaded project
                 emitEvent("projectLoaded", juce::var(resultObj));
             });

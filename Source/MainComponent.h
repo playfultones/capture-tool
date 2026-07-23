@@ -153,8 +153,9 @@ private:
      */
     LoadProjectResult deserializeProjectState(const juce::var& projectData);
 
-    /** Auto-save project to output folder (silent, no dialog)
-     *  Saves to the current project file (or project.rcp in the output folder).
+    /** Auto-save project (silent, no dialog).
+     *  Writes to the current project file only. No-ops if no project has been
+     *  saved/opened yet (never fabricates a project.rcp in the output folder).
      *  Emits a "projectSaved" event to the frontend on success.
      */
     void autoSaveProject();
