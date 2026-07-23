@@ -66,22 +66,12 @@ window.GuideCameraManager = class GuideCameraManager {
     }
     
     try {
-      // Request permission first (needed to get device labels)
-      await navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-          // Stop the stream immediately, we just needed permission
-          stream.getTracks().forEach(track => track.stop());
-        })
-        .catch(error => {
-          // Permission denied or no camera available
-          if (error.name === 'NotAllowedError') {
-            console.warn('Camera permission denied');
-          } else if (error.name === 'NotFoundError') {
-            console.warn('No camera device found');
-          }
-          // Continue anyway - we can still list devices (without labels)
-        });
-      
+      // Do NOT request camera permission here. This runs during app startup,
+      // and in the WKWebView getUserMedia() can hang indefinitely (there is no
+      // native camera-permission handler), which would block init() before it
+      // wires up backend event listeners. Enumerate without permission instead;
+      // labels are empty until the user actually starts a camera (startCamera()
+      // requests permission at that point and refreshes the labels).
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(device => device.kind === 'videoinput');
       
@@ -135,7 +125,10 @@ window.GuideCameraManager = class GuideCameraManager {
       
       this.state.setActiveCamera(deviceId, stream);
       this._updateToggleButton(true);
-      
+
+      // Now that permission is granted, re-enumerate so device labels populate.
+      await this.enumerateDevices();
+
       return true;
       
     } catch (error) {
