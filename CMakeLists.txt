@@ -69,6 +69,43 @@ target_link_libraries(ReferenceCapturer
         juce::juce_recommended_warning_flags
 )
 
+#==============================================================================
+# EngineHarness: headless CLI to verify the audio engine (roundtrip / recording)
+# against real hardware, without the WebView/GUI. Not part of the shipped app.
+juce_add_console_app(EngineHarness
+    PRODUCT_NAME "EngineHarness"
+)
+
+target_sources(EngineHarness
+    PRIVATE
+        harness/main.cpp
+        Source/AudioEngine.cpp
+)
+
+target_include_directories(EngineHarness PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Source")
+
+target_compile_definitions(EngineHarness
+    PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_STANDALONE_APPLICATION=1
+        JUCE_APPLICATION_NAME_STRING="EngineHarness"
+        JUCE_APPLICATION_VERSION_STRING="0.0.0"
+)
+
+target_link_libraries(EngineHarness
+    PRIVATE
+        playfultones_metering
+        playfultones_wavrecorder
+        juce::juce_audio_basics
+        juce::juce_audio_devices
+        juce::juce_audio_formats
+        juce::juce_core
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+
 # Copy webapp resources to the app bundle
 set(WEBAPP_SOURCE_DIR "${CMAKE_SOURCE_DIR}/Resources/webapp")
 set(WEBAPP_DEST_DIR "$<TARGET_BUNDLE_CONTENT_DIR:ReferenceCapturer>/Resources/webapp")
