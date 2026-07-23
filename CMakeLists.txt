@@ -27,6 +27,17 @@ juce_add_gui_app(ReferenceCapturer
     MICROPHONE_PERMISSION_TEXT "Reference Capturer needs microphone access to capture audio from your hardware."
     CAMERA_PERMISSION_ENABLED TRUE
     CAMERA_PERMISSION_TEXT "Reference Capturer needs camera access for the visual capture guide overlay feature."
+    # The *_PERMISSION_ENABLED flags only add the Info.plist usage strings. Under
+    # hardened runtime (which scripts/sign-app.sh applies via --options runtime for
+    # the Developer ID build), macOS ALSO requires the matching resource-access
+    # entitlements or it hard-blocks the device with no prompt. JUCE generates the
+    # entitlements file from HARDENED_RUNTIME_OPTIONS, so declare them here — this
+    # is what makes mic/camera work when launched from /Applications, not just the
+    # ad-hoc build folder copy (which has no hardened runtime and is exempt).
+    HARDENED_RUNTIME_ENABLED TRUE
+    HARDENED_RUNTIME_OPTIONS
+        "com.apple.security.device.audio-input"
+        "com.apple.security.device.camera"
 )
 
 # Collect all source files from Source/ directory
