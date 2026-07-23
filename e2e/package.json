@@ -1,0 +1,8 @@
+{
+  "name": "capture-tool-e2e",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@focusritegroup/juce-end-to-end": "1.2.1"
+  }
+}

@@ -11,6 +11,10 @@
 #include "capture/ReferenceSignal.h"
 #include "project/ProjectState.h"
 
+#if REFCAP_E2E
+#include "e2e/E2EBridge.h"
+#endif
+
 class MainComponent : public juce::Component,
                       private juce::Timer,
                       private AudioEngine::Listener,
@@ -195,6 +199,12 @@ private:
     AudioEngine audioEngine;
     std::unique_ptr<juce::WebBrowserComponent> webView;
     std::unique_ptr<juce::FileChooser> fileChooser;
+
+#if REFCAP_E2E
+    // Declared after webView: destroyed first, so no e2e command can reach a
+    // dead WebView during teardown.
+    std::unique_ptr<E2EBridge> e2eBridge;
+#endif
 
     // Track last playback state to detect changes
     bool lastPlaybackState = false;

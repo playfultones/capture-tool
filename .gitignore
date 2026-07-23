@@ -1,6 +1,11 @@
 # Build artifacts
 build/
+build-*/
 cmake-build-*/
+
+# e2e driver artifacts
+e2e/node_modules/
+e2e/out/
 
 # IDE
 .idea/

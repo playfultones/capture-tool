@@ -73,6 +73,18 @@ target_link_libraries(ReferenceCapturer
 )
 
 #==============================================================================
+# E2E automation bridge (dev only): juce-end-to-end TestCentre + evaluate-js
+# command for driving the WebView UI from the TypeScript test driver.
+option(E2E_TESTING "Build with the end-to-end automation bridge" OFF)
+
+if(E2E_TESTING)
+    add_subdirectory(juce-end-to-end EXCLUDE_FROM_ALL)
+
+    target_link_libraries(ReferenceCapturer PRIVATE focusrite-e2e)
+    target_compile_definitions(ReferenceCapturer PRIVATE REFCAP_E2E=1)
+endif()
+
+#==============================================================================
 # EngineHarness: headless CLI to verify the audio engine (roundtrip / recording)
 # against real hardware, without the WebView/GUI. Not part of the shipped app.
 juce_add_console_app(EngineHarness

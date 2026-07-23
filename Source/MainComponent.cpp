@@ -26,6 +26,12 @@ MainComponent::MainComponent()
     
     // Listen for capture state changes and completion events
     audioEngine.addCaptureListener(this);
+
+#if REFCAP_E2E
+    // Only active when launched by the e2e driver with --e2e-test-port=N
+    if (E2EBridge::isRequested())
+        e2eBridge = std::make_unique<E2EBridge>(*webView);
+#endif
 }
 
 MainComponent::~MainComponent()

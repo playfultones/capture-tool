@@ -21,6 +21,8 @@
             pkgs.cmake
             pkgs.ninja
             pkgs.pkg-config
+            # e2e automation driver (juce-end-to-end TS library)
+            pkgs.nodejs_22
           ];
 
           shellHook = ''
