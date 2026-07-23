@@ -121,12 +121,15 @@ async function onInputDeviceChange() {
     
     audioState.currentInputDevice = deviceSelect.value;
     audioState.currentInputChannel = 0; // Reset to first channel
-    
-    // Update channel dropdown with actual channel count
-    await updateInputChannels();
-    
-    // Apply to backend
+
+    // Apply to backend FIRST so the device is opened. The backend only knows a
+    // device's real channel count once it is the active device; querying before
+    // opening returns a fallback of 2, which would cap the channel dropdown and
+    // make higher channels (e.g. input 10) unselectable.
     await backend.call('setInputDevice', audioState.currentInputDevice, audioState.currentInputChannel);
+
+    // Now populate the channel dropdown with the true channel count
+    await updateInputChannels();
 }
 
 /**
@@ -147,12 +150,13 @@ async function onOutputDeviceChange() {
     
     audioState.currentOutputDevice = deviceSelect.value;
     audioState.currentOutputChannel = 0; // Reset to first channel
-    
-    // Update channel dropdown with actual channel count
-    await updateOutputChannels();
-    
-    // Apply to backend
+
+    // Apply to backend FIRST so the device is opened before we query its channel
+    // count (see onInputDeviceChange for why ordering matters).
     await backend.call('setOutputDevice', audioState.currentOutputDevice, audioState.currentOutputChannel);
+
+    // Now populate the channel dropdown with the true channel count
+    await updateOutputChannels();
 }
 
 /**
