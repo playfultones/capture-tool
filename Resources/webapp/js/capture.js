@@ -544,7 +544,7 @@ window.makeCombinationKey = makeCombinationKey;
 const matrixCombinationsState = {
     combinations: [],   // [{ key, controlValues:{name:value}, included }]
     filters: {},        // controlName -> selected value, or '' for any
-    lastBulkUndo: null,  // { keys:[], included:bool } — prior state for one-level undo
+    lastBulkUndo: null,  // { entries: [{key, included}] } - prior state for one-level undo
 };
 window.matrixCombinationsState = matrixCombinationsState;
 
@@ -775,13 +775,14 @@ async function bulkSetShown(included) {
     if (visible.length === 0) return;
     const keys = visible.map((c) => c.key);
 
-    // Capture prior state for one-level undo (only the affected keys).
-    matrixCombinationsState.lastBulkUndo = {
-        entries: visible.map((c) => ({ key: c.key, included: c.included })),
-    };
-
     try {
         const res = await backend.call('setCombinationsIncluded', keys, included);
+        // Capture prior state for one-level undo only after the backend call succeeds,
+        // so a failed call does not overwrite a valid earlier undo snapshot.
+        // Must read combo.included before the loop below mutates it.
+        matrixCombinationsState.lastBulkUndo = {
+            entries: visible.map((c) => ({ key: c.key, included: c.included })),
+        };
         for (const combo of matrixCombinationsState.combinations)
             if (keys.includes(combo.key)) combo.included = included;
         renderMatrixCombinations();
@@ -811,15 +812,20 @@ async function undoLastBulk() {
     // Restore each key to its prior state. Group by target value to minimise calls.
     const toInclude = undo.entries.filter((e) => e.included).map((e) => e.key);
     const toExclude = undo.entries.filter((e) => !e.included).map((e) => e.key);
-    if (toInclude.length) await backend.call('setCombinationsIncluded', toInclude, true);
-    if (toExclude.length) await backend.call('setCombinationsIncluded', toExclude, false);
-    for (const combo of matrixCombinationsState.combinations) {
-        const e = undo.entries.find((x) => x.key === combo.key);
-        if (e) combo.included = e.included;
+    try {
+        if (toInclude.length) await backend.call('setCombinationsIncluded', toInclude, true);
+        if (toExclude.length) await backend.call('setCombinationsIncluded', toExclude, false);
+        for (const combo of matrixCombinationsState.combinations) {
+            const e = undo.entries.find((x) => x.key === combo.key);
+            if (e) combo.included = e.included;
+        }
+        matrixCombinationsState.lastBulkUndo = null;
+        document.getElementById('matrix-undo-toast')?.classList.add('hidden');
+        renderMatrixCombinations();
+    } catch (err) {
+        console.error('Undo failed:', err);
+        // Leave lastBulkUndo and toast intact so the user can retry.
     }
-    matrixCombinationsState.lastBulkUndo = null;
-    document.getElementById('matrix-undo-toast')?.classList.add('hidden');
-    renderMatrixCombinations();
 }
 
 /**
