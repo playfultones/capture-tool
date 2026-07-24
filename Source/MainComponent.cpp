@@ -813,12 +813,15 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 
                 juce::String newId = captureControlManager.addControl(name, type, valuesInput);
                 markProjectDirty();
+                int stranded = captureControlManager.pruneStrandedKeys();
 
                 auto* resultObj = new juce::DynamicObject();
                 resultObj->setProperty("success", true);
                 resultObj->setProperty("id", newId);
                 resultObj->setProperty("controls", captureControlManager.toVar());
                 resultObj->setProperty("totalCaptureCount", captureControlManager.getTotalCaptureCount());
+                resultObj->setProperty("strandedExcludedCount", stranded);
+                resultObj->setProperty("includedCount", captureControlManager.getIncludedCount());
                 
                 complete(juce::var(resultObj));
             })
@@ -836,12 +839,19 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 
                 juce::String id = args[0].toString();
                 bool success = captureControlManager.removeControl(id);
-                if (success) markProjectDirty();
+                int stranded = 0;
+                if (success)
+                {
+                    markProjectDirty();
+                    stranded = captureControlManager.pruneStrandedKeys();
+                }
 
                 auto* resultObj = new juce::DynamicObject();
                 resultObj->setProperty("success", success);
                 resultObj->setProperty("controls", captureControlManager.toVar());
                 resultObj->setProperty("totalCaptureCount", captureControlManager.getTotalCaptureCount());
+                resultObj->setProperty("strandedExcludedCount", stranded);
+                resultObj->setProperty("includedCount", captureControlManager.getIncludedCount());
                 
                 complete(juce::var(resultObj));
             })
@@ -865,12 +875,19 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 ControlType type = (typeStr == "continuous") ? ControlType::CONTINUOUS : ControlType::DISCRETE;
                 
                 bool success = captureControlManager.updateControl(id, name, type, valuesInput);
-                if (success) markProjectDirty();
+                int stranded = 0;
+                if (success)
+                {
+                    markProjectDirty();
+                    stranded = captureControlManager.pruneStrandedKeys();
+                }
 
                 auto* resultObj = new juce::DynamicObject();
                 resultObj->setProperty("success", success);
                 resultObj->setProperty("controls", captureControlManager.toVar());
                 resultObj->setProperty("totalCaptureCount", captureControlManager.getTotalCaptureCount());
+                resultObj->setProperty("strandedExcludedCount", stranded);
+                resultObj->setProperty("includedCount", captureControlManager.getIncludedCount());
                 
                 complete(juce::var(resultObj));
             })
@@ -881,7 +898,59 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
             [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
                 complete(juce::var(captureControlManager.getTotalCaptureCount()));
             })
-        
+
+        // Enumerate all matrix combinations with current include state.
+        .withNativeFunction(
+            "getMatrixCombinations",
+            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
+                juce::Array<juce::var> result;
+                for (const auto& combo : captureControlManager.getCombinations())
+                {
+                    auto* obj = new juce::DynamicObject();
+                    obj->setProperty("key", combo.key);
+
+                    auto* valuesObj = new juce::DynamicObject();
+                    for (int i = 0; i < combo.controlValues.size(); ++i)
+                        valuesObj->setProperty(juce::Identifier(combo.controlValues.getAllKeys()[i]),
+                                               combo.controlValues.getAllValues()[i]);
+                    obj->setProperty("controlValues", juce::var(valuesObj));
+                    obj->setProperty("included", !captureControlManager.isExcluded(combo.key));
+                    result.add(juce::var(obj));
+                }
+                complete(juce::var(result));
+            })
+
+        // Include/exclude a set of combinations by key.
+        // Args: [keys: string[], included: bool]
+        .withNativeFunction(
+            "setCombinationsIncluded",
+            [this](const juce::Array<juce::var>& args, Completion complete) {
+                auto* resultObj = new juce::DynamicObject();
+                if (args.size() < 2 || !args[0].isArray())
+                {
+                    resultObj->setProperty("success", false);
+                    resultObj->setProperty("error", "requires keys[] and included");
+                    complete(juce::var(resultObj));
+                    return;
+                }
+
+                const bool included = static_cast<bool>(args[1]);
+                for (const auto& k : *args[0].getArray())
+                    captureControlManager.setExcluded(k.toString(), !included);
+                markProjectDirty();
+
+                // Use getCombinations().size() for totalCount rather than
+                // getTotalCombinationCount(), which clamps at 100000 even when
+                // the product overflows and getCombinations() returns []. Reporting
+                // getCombinations().size() keeps includedCount/totalCount consistent
+                // with the array that getMatrixCombinations returns to JS.
+                const auto combinations = captureControlManager.getCombinations();
+                resultObj->setProperty("success", true);
+                resultObj->setProperty("includedCount", captureControlManager.getIncludedCount());
+                resultObj->setProperty("totalCount", combinations.size());
+                complete(juce::var(resultObj));
+            })
+
         //==============================================================================
         // Capture List (Generated from Matrix)
         
