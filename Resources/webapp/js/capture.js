@@ -770,6 +770,58 @@ async function onCombinationCheckboxChange(key, checked) {
     }
 }
 
+async function bulkSetShown(included) {
+    const visible = getVisibleCombinations();
+    if (visible.length === 0) return;
+    const keys = visible.map((c) => c.key);
+
+    // Capture prior state for one-level undo (only the affected keys).
+    matrixCombinationsState.lastBulkUndo = {
+        entries: visible.map((c) => ({ key: c.key, included: c.included })),
+    };
+
+    try {
+        const res = await backend.call('setCombinationsIncluded', keys, included);
+        for (const combo of matrixCombinationsState.combinations)
+            if (keys.includes(combo.key)) combo.included = included;
+        renderMatrixCombinations();
+        showUndoToast(`${included ? 'Included' : 'Excluded'} ${keys.length}`);
+        if (res && typeof res.includedCount === 'number') {
+            const countEl = document.getElementById('matrix-included-count');
+            if (countEl) countEl.textContent = `${res.includedCount} of ${res.totalCount} included`;
+        }
+    } catch (err) {
+        console.error('Bulk set failed:', err);
+    }
+}
+
+function showUndoToast(text) {
+    const toast = document.getElementById('matrix-undo-toast');
+    const label = document.getElementById('matrix-undo-text');
+    if (!toast || !label) return;
+    label.textContent = text;
+    toast.classList.remove('hidden');
+    clearTimeout(showUndoToast._t);
+    showUndoToast._t = setTimeout(() => toast.classList.add('hidden'), 6000);
+}
+
+async function undoLastBulk() {
+    const undo = matrixCombinationsState.lastBulkUndo;
+    if (!undo) return;
+    // Restore each key to its prior state. Group by target value to minimise calls.
+    const toInclude = undo.entries.filter((e) => e.included).map((e) => e.key);
+    const toExclude = undo.entries.filter((e) => !e.included).map((e) => e.key);
+    if (toInclude.length) await backend.call('setCombinationsIncluded', toInclude, true);
+    if (toExclude.length) await backend.call('setCombinationsIncluded', toExclude, false);
+    for (const combo of matrixCombinationsState.combinations) {
+        const e = undo.entries.find((x) => x.key === combo.key);
+        if (e) combo.included = e.included;
+    }
+    matrixCombinationsState.lastBulkUndo = null;
+    document.getElementById('matrix-undo-toast')?.classList.add('hidden');
+    renderMatrixCombinations();
+}
+
 /**
  * Attach event listeners to control items
  */
@@ -968,6 +1020,10 @@ function initCaptureControls() {
             }
         });
     }
+
+    document.getElementById('matrix-include-shown')?.addEventListener('click', () => bulkSetShown(true));
+    document.getElementById('matrix-exclude-shown')?.addEventListener('click', () => bulkSetShown(false));
+    document.getElementById('matrix-undo-btn')?.addEventListener('click', undoLastBulk);
 
     // Load initial state; loadCaptureControls handles the initial combinations load.
     loadCaptureControls();
