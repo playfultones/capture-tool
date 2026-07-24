@@ -718,12 +718,7 @@ function renderMatrixCombinations() {
         if (anyFilter)
             statusEl.innerHTML = `Showing ${visible.length} of ${total} (filtered)<span class="clear-filter" id="matrix-clear-filter">clear</span>`;
     }
-    const clearEl = document.getElementById('matrix-clear-filter');
-    if (clearEl)
-        clearEl.addEventListener('click', () => {
-            matrixCombinationsState.filters = {};
-            renderMatrixCombinations();
-        });
+    // Clear-filter click is handled by the delegated listener in initCaptureControls.
 
     // Bulk button labels with live counts.
     const incBtn = document.getElementById('matrix-include-shown');
@@ -768,10 +763,7 @@ async function onCombinationCheckboxChange(key, checked) {
         const res = await backend.call('setCombinationsIncluded', [key], checked);
         const combo = matrixCombinationsState.combinations.find((c) => c.key === key);
         if (combo) combo.included = checked;
-        if (res && typeof res.includedCount === 'number') {
-            const countEl = document.getElementById('matrix-included-count');
-            if (countEl) countEl.textContent = `${res.includedCount} of ${res.totalCount} included`;
-        }
+        // renderMatrixCombinations() recomputes and renders the count; no need to update it directly.
         renderMatrixCombinations();
     } catch (err) {
         console.error('Failed to toggle combination:', err);
@@ -966,9 +958,19 @@ function initCaptureControls() {
         addBtn.addEventListener('click', onAddControlClick);
     }
 
-    // Load initial state
+    // Delegated clear-filter listener: one persistent handler for the filter-status banner.
+    const filterStatusEl = document.getElementById('matrix-filter-status');
+    if (filterStatusEl) {
+        filterStatusEl.addEventListener('click', (event) => {
+            if (event.target.classList.contains('clear-filter')) {
+                matrixCombinationsState.filters = {};
+                renderMatrixCombinations();
+            }
+        });
+    }
+
+    // Load initial state; loadCaptureControls handles the initial combinations load.
     loadCaptureControls();
-    loadMatrixCombinations();
 }
 
 //==============================================================================
@@ -1450,7 +1452,7 @@ async function generateCaptureList() {
             // Update the display
             updateCaptureListDisplay();
             updateCaptureListButtons();
-            loadMatrixCombinations();
+            await loadMatrixCombinations();
 
             console.log(`Generated ${result.count} capture items`);
             
