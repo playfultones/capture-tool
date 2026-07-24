@@ -14,82 +14,28 @@ void CaptureListManager::generate(const CaptureControlManager& controlManager)
 {
     items.clear();
 
-    // Always add the roundtrip entry first (unit bypassed, no control values)
+    // Always add the roundtrip entry first (unit bypassed, no control values).
     CaptureItem roundtripItem;
     roundtripItem.id = generateItemId();
     roundtripItem.index = 1;
     roundtripItem.status = CaptureStatus::PENDING;
     roundtripItem.isRoundtrip = true;
-    // No control values for roundtrip - unit will be bypassed
     items.add(roundtripItem);
 
-    const auto& controls = controlManager.getControls();
-    if (controls.isEmpty())
-        return;
-
-    // Calculate total combinations (safety check)
-    int totalCount = controlManager.getTotalCaptureCount();
-    if (totalCount == 0 || totalCount > 100000)
-        return;
-
-    // Build list of control names and their values for easier iteration
-    juce::StringArray controlNames;
-    juce::Array<juce::StringArray> controlValueLists;
-
-    for (const auto& ctrl : controls)
+    // Emit one item per included combination, in enumeration order.
+    int captureIndex = 2; // roundtrip is index 1
+    for (const auto& combo : controlManager.getCombinations())
     {
-        controlNames.add(ctrl.name);
-        controlValueLists.add(ctrl.values);
-    }
+        if (controlManager.isExcluded(combo.key))
+            continue;
 
-    // Generate cartesian product using iterative approach
-    // Start with indices all at 0
-    juce::Array<int> indices;
-    indices.resize(controls.size());
-    for (int i = 0; i < indices.size(); ++i)
-        indices.set(i, 0);
-
-    int captureIndex = 2; // Start at 2 because roundtrip is at index 1
-
-    while (true)
-    {
-        // Create a capture item with current combination
         CaptureItem item;
         item.id = generateItemId();
         item.index = captureIndex++;
         item.status = CaptureStatus::PENDING;
         item.isRoundtrip = false;
-
-        // Set control values based on current indices
-        for (int i = 0; i < controlNames.size(); ++i)
-        {
-            const auto& values = controlValueLists[i];
-            item.controlValues.set(controlNames[i], values[indices[i]]);
-        }
-
+        item.controlValues = combo.controlValues;
         items.add(item);
-
-        // Increment indices (like a multi-digit counter)
-        // Start from last control and propagate carry
-        int position = indices.size() - 1;
-        while (position >= 0)
-        {
-            indices.set(position, indices[position] + 1);
-
-            if (indices[position] < controlValueLists[position].size())
-            {
-                // No overflow, we're done incrementing
-                break;
-            }
-
-            // Overflow: reset this position and carry to next
-            indices.set(position, 0);
-            position--;
-        }
-
-        // If we've overflowed all positions, we're done
-        if (position < 0)
-            break;
     }
 }
 
