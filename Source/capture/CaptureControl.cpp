@@ -168,3 +168,107 @@ juce::var CaptureControlManager::toVar() const
 
     return juce::var(result);
 }
+
+juce::String CaptureControlManager::makeCombinationKey(const juce::StringPairArray& controlValues) const
+{
+    static const juce::String sep = juce::String::charToString(static_cast<juce::juce_wchar>(31));
+
+    juce::String key;
+    for (int i = 0; i < controls.size(); ++i)
+    {
+        if (i > 0)
+            key << sep;
+        key << controls[i].name << "=" << controlValues[controls[i].name];
+    }
+    return key;
+}
+
+juce::Array<MatrixCombination> CaptureControlManager::getCombinations() const
+{
+    juce::Array<MatrixCombination> result;
+
+    if (controls.isEmpty())
+        return result;
+
+    // Exact product with 64-bit math and early bail-out. getTotalCombinationCount()
+    // CLAMPS at 100000 and returns exactly 100000 when the product overflows it, so
+    // it cannot be used as the guard here — recompute exactly and refuse to
+    // enumerate anything too large to handle interactively (this runs on every edit).
+    juce::int64 total = 1;
+    for (const auto& ctrl : controls)
+    {
+        total *= (juce::int64) ctrl.getValueCount();
+        if (total > 100000)
+            return result;   // too large to enumerate/exclude in the UI
+    }
+    if (total == 0)
+        return result;
+
+    juce::Array<int> indices;
+    indices.resize(controls.size());
+    for (int i = 0; i < indices.size(); ++i)
+        indices.set(i, 0);
+
+    while (true)
+    {
+        MatrixCombination combo;
+        for (int i = 0; i < controls.size(); ++i)
+            combo.controlValues.set(controls[i].name, controls[i].values[indices[i]]);
+        combo.key = makeCombinationKey(combo.controlValues);
+        result.add(combo);
+
+        int position = indices.size() - 1;
+        while (position >= 0)
+        {
+            indices.set(position, indices[position] + 1);
+            if (indices[position] < controls[position].values.size())
+                break;
+            indices.set(position, 0);
+            position--;
+        }
+        if (position < 0)
+            break;
+    }
+
+    return result;
+}
+
+void CaptureControlManager::setExcluded(const juce::String& key, bool excluded)
+{
+    if (excluded)
+    {
+        if (!excludedKeys.contains(key))
+            excludedKeys.add(key);
+    }
+    else
+    {
+        excludedKeys.removeString(key);
+    }
+}
+
+int CaptureControlManager::getIncludedCount() const
+{
+    int included = 0;
+    for (const auto& combo : getCombinations())
+        if (!isExcluded(combo.key))
+            ++included;
+    return included;
+}
+
+int CaptureControlManager::pruneStrandedKeys()
+{
+    juce::StringArray valid;
+    for (const auto& combo : getCombinations())
+        valid.add(combo.key);
+
+    int removed = 0;
+    for (int i = excludedKeys.size(); --i >= 0;)
+    {
+        if (!valid.contains(excludedKeys[i]))
+        {
+            excludedKeys.remove(i);
+            ++removed;
+        }
+    }
+    return removed;
+}
