@@ -48,10 +48,13 @@ Add a **combinations table** to the matrix stage (alongside the controls list):
 1. A row per generated combination, each with an **include checkbox** (default
    checked).
 2. **Per-control filter chips** above the table that narrow the visible rows
-   (client-side only).
-3. **"Include shown" / "Exclude shown"** bulk buttons acting on the filtered rows.
+   (client-side only). Single-select per chip (multi-select deferred).
+3. **"Include shown" / "Exclude shown"** bulk buttons acting on the currently
+   *filter-visible* rows, with the live count baked into the label ("Exclude 90
+   shown"). These are the only bulk mechanism — there is no separate header
+   select-all checkbox.
 4. A "**N of M included**" readout (replaces / augments the existing total-count
-   display).
+   display), with microcopy that exclusions apply on the next **Generate List**.
 
 Generate reads the include state and emits only included combinations. This reuses
 the flat-table + filter + bulk pattern validated during brainstorming (chosen over
@@ -82,6 +85,13 @@ is unchanged.
   excluded keys that no longer match any combination are simply ignored, and any
   genuinely new combination defaults to included. This matches "default all
   included" and needs no migration.
+- **This invalidation must not be silent.** When a control edit strands one or
+  more excluded keys (they no longer match any current combination), the frontend
+  warns with the count — e.g. "This edit reset the include/exclude selection for
+  45 combinations." Losing a hand-picked selection with no notice reads as a bug;
+  the warning is the floor (a rename-specific key migration is a deferred upgrade).
+  The `addCaptureControl` / `removeCaptureControl` / `updateCaptureControl`
+  responses expose the stranded-key count so the frontend can surface it.
 
 ## Persistence
 
@@ -96,8 +106,24 @@ is unchanged.
 `generateCaptureList` rebuilds the capture list from scratch and resets statuses,
 as today. It now **skips excluded combinations** while doing so. It does **not**
 touch `excludedKeys` — the exclusion selection is matrix state that survives
-generation. (Deferred: preserving/altering the wipe-on-generate behavior for
-statuses is out of scope; current behavior is acceptable.)
+generation.
+
+The status-preserving regenerate (keep completed captures across a regenerate)
+remains **deferred** per prior decision. Because this feature makes mid-session
+trimming likely, two cheap guardrails ship now so the wipe is never a silent
+dead-end:
+
+- **Staleness indicator.** When the current exclusion selection no longer matches
+  the already-generated capture list (the user edited the selection after
+  generating), show a banner on the capture list: "Selection changed since last
+  generate — regenerate to apply." This is a boolean derived state (selection
+  fingerprint vs. the fingerprint captured at last generate); it does not require
+  diffing UI.
+- **Destructive-generate confirmation.** If Generate would discard completed
+  captures, confirm first, stating the count: "This will reset N completed
+  captures. Continue?" Also confirm when the resulting list would be
+  **empty of matrix rows** (everything excluded → only the roundtrip remains):
+  "0 combinations included — the list will contain only the roundtrip. Continue?"
 
 ## Backend (native functions)
 
@@ -123,7 +149,13 @@ operations.
 generateCaptureList()   // existing — modified
 ```
 Skips combinations whose key is in `excludedKeys`; always appends the roundtrip
-row.
+row. (The destructive-generate / empty-list confirmations live in the frontend,
+which knows the current completed-capture count; the backend just builds the list.)
+
+The existing `addCaptureControl` / `removeCaptureControl` / `updateCaptureControl`
+responses gain a **`strandedExcludedCount`** field — the number of previously
+excluded keys that no longer match any combination after the edit — so the
+frontend can warn about selection loss (see Data model).
 
 ## Roundtrip handling
 
@@ -146,24 +178,47 @@ part of the capture matrix*.
 - **Filter chips** above it: one dropdown per control, default `any`, values drawn
   from the controls' own value lists. Client-side only — hides non-matching rows,
   never changes include state. A "**Showing K of M (filtered) · clear**" banner
-  appears while any filter is active.
-- **Bulk buttons:** "Include shown" / "Exclude shown" collect the keys of visible
-  (filtered) rows and call `setCombinationsIncluded(keys, …)`. A header
-  select-all/none checkbox toggles the visible rows.
+  appears while any filter is active, positioned **next to the bulk buttons** so
+  an active filter is visible at the moment of clicking Include/Exclude shown
+  (guards against acting on the wrong rows because a stale filter was left on).
+  "shown" throughout means **filter-visible**, not viewport-visible.
+- **Bulk buttons (the only bulk mechanism):** "Include shown" / "Exclude shown",
+  each with the live count in the label ("Exclude 90 shown"). They collect the
+  keys of the currently filter-visible rows and call
+  `setCombinationsIncluded(keys, …)`. No separate header select-all checkbox.
+- **Undo:** after a bulk operation, show a one-level undo toast ("Excluded 76 —
+  Undo") that restores the prior include state of exactly the affected keys.
 - **"N of M included"** readout (M = total combinations, N = included). Reuses /
-  replaces the existing `total-capture-count` element. Keep the existing
-  warning/error thresholds on the total.
+  replaces the existing `total-capture-count` element. The existing
+  warning/error thresholds guard **render cost**, so they key off **M** (the
+  number of rows actually rendered in the combinations table); the readout also
+  shows **N** as the count that will actually be recorded, so a small N under a
+  large M is not mistaken for an alarm.
 - Individual checkbox change → `setCombinationsIncluded([key], checked)`. Mutations
   update the count and the row's style from the returned counts (no full re-fetch
   required for a single toggle).
 
-**Capture list: unchanged.** `updateCaptureListDisplay`, row-click/current-capture
-navigation, progress ("X / Y complete"), and status handling stay as they are.
-After this change the list simply contains included combinations + roundtrip.
+**Capture list: essentially unchanged.** `updateCaptureListDisplay`,
+row-click/current-capture navigation, progress ("X / Y complete"), and status
+handling stay as they are. After this change the list simply contains included
+combinations + roundtrip. Two small, non-interactive additions so a trimmed list
+is never mysterious:
 
-**Large matrices:** the combinations table renders all rows (same approach as the
-current capture list). Virtualization for very large products is out of scope; the
-existing >1000 / >10000 warning thresholds on the count remain the guard.
+- A one-line header readout: "**14 of 90 combinations included (+ roundtrip)**"
+  that links/scrolls back to the matrix stage — answers "why is this combination
+  missing?" without cluttering the rows themselves.
+- The **staleness banner** described under "Regeneration behavior" when the
+  selection has changed since the last generate.
+
+**Large / continuous matrices (known limitation):** a continuous control expands
+to many values (e.g. `0-10:0.5` → 21), so the product — and thus this table —
+grows fastest exactly there, and with single-select chips a value-range region
+takes one include pass per value. The combinations table renders all rows (same
+approach as the current capture list); virtualization and multi-select chips are
+out of scope for v1. The existing >1000 / >10000 thresholds guard render cost
+(keyed off M). This is an accepted v1 limitation, called out here so it is a
+conscious tradeoff rather than a surprise; multi-select chips are the first
+mitigation to pull in if continuous controls become common.
 
 ## Example: the glare 14-of-90 workflow
 
@@ -196,7 +251,20 @@ Via the e2e harness (`e2e/`, drives the webview through `evaluate-js`):
 - **Regeneration:** exclusions persist across `generateCaptureList`; only capture
   list statuses reset.
 - **Roundtrip exemption:** roundtrip never appears in `getMatrixCombinations`,
-  always appears once in the generated list, and is unaffected by bulk/select-all.
+  always appears once in the generated list, and is unaffected by bulk actions.
+- **Stranded-key warning:** exclude combinations, then rename a control/value so
+  those keys no longer match; confirm the control-edit response reports the
+  stranded count and the frontend surfaces the warning.
+- **Bulk undo:** "Exclude shown" then Undo restores exactly the prior include
+  state of the affected keys and nothing else.
+- **Staleness banner:** generate, then change the selection; confirm the capture
+  list shows the "selection changed since last generate" banner, which clears
+  after regenerating.
+- **Destructive / empty generate:** with completed captures present, Generate
+  confirms with the reset count; with everything excluded, Generate confirms the
+  roundtrip-only outcome.
+- **Trace-back readout:** the capture list header shows "N of M combinations
+  included (+ roundtrip)" matching the generated contents.
 
 ## Out of scope (possible later upgrades)
 
