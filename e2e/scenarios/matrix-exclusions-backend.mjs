@@ -105,6 +105,8 @@ try {
   combos = await call('getMatrixCombinations');
   assert.strictEqual(combos.filter((c) => c.included).length, 14, 'the 14 survive reload');
   assert.strictEqual(combos.filter((c) => !c.included).length, 76, '76 still excluded after reload');
+  assert.ok(combos.filter((c) => c.included).every((c) => isWanted(c.controlValues)),
+    'reloaded included set contains only the correct 14 passes (guards key deserialization identity)');
 
   // Key stability: adding a VALUE to Glare keeps the still-valid exclusions
   // (all 76 excluded combos still exist).
@@ -120,18 +122,28 @@ try {
   const add = await call('addCaptureControl', 'Tone', 'discrete', '2, 5');
   assert.strictEqual(add.strandedExcludedCount, 76, 'adding a control strands all 76 prior keys');
   combos = await call('getMatrixCombinations');
+  // Expanded matrix: Gain2 x Mode3 x Shape3 x Glare6 (0,3,5,8,10,12) x Tone2 = 216.
+  // Assert the size so `every` below cannot pass vacuously on an empty response.
+  assert.strictEqual(combos.length, 216, 'expanded matrix has 216 combos after value+control additions');
   assert.ok(combos.every((c) => c.included), 'all included after strand-and-prune');
 
-  // Verify the real glare project was never touched.
-  const glareChecksumAfter = md5(GLARE_PROJECT);
-  assert.strictEqual(glareChecksumAfter, glareChecksumBefore,
-    `REAL glare.rcp was modified! before=${glareChecksumBefore} after=${glareChecksumAfter}`);
-
   console.log('PASS: matrix-exclusions-backend');
-  console.log(`glare.rcp integrity: ${glareChecksumBefore} (unchanged)`);
 } catch (err) {
   fail(String(err && err.stack ? err.stack : err));
 } finally {
+  // Real-file safety guard runs even when an earlier assertion throws. Don't
+  // throw here (it would mask the original failure) — flag loudly and fail.
+  try {
+    const glareChecksumAfter = md5(GLARE_PROJECT);
+    if (glareChecksumAfter !== glareChecksumBefore) {
+      console.error(`FAIL: REAL glare.rcp was modified! before=${glareChecksumBefore} after=${glareChecksumAfter}`);
+      process.exitCode = 1;
+    } else {
+      console.log(`glare.rcp integrity: ${glareChecksumBefore} (unchanged)`);
+    }
+  } catch (e) {
+    console.error(`glare.rcp integrity check errored: ${e}`);
+  }
   try {
     await h.evalJs('window.close && window.close()');
   } catch {}
