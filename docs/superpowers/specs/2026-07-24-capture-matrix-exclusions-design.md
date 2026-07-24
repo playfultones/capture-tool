@@ -52,10 +52,10 @@ Single field added to `CaptureItem` (`Source/capture/CaptureList.h`):
 bool included = true;   // false = present in the matrix but skipped when recording
 ```
 
-- Property of each generated row. Defaults to `true`.
-- Applies uniformly to every row **including the roundtrip row** (no special
-  casing — the roundtrip is includable/excludable like any other row, default
-  included).
+- Property of each generated matrix row. Defaults to `true`.
+- **The roundtrip row is not a matrix combination and is exempt from exclusion
+  entirely** — it is always recorded and its `included` flag is never toggled by
+  any UI. It always sits in the capture list. See "Roundtrip handling" below.
 - Excluded rows remain in the list; they are never removed from `items`.
 
 ## Persistence
@@ -74,6 +74,23 @@ statuses. It will **also reset all exclusions** (every freshly generated row is
 `included = true`). This is consistent with the existing "generate = fresh list"
 semantics. Consequence: editing controls and regenerating loses prior exclusions.
 Accepted for v1.
+
+## Roundtrip handling
+
+The roundtrip row is a mandatory calibration reference, **not** a matrix
+combination. It is exempt from the entire exclusion mechanism:
+
+- Always in the capture list, always recorded — its `included` flag stays `true`
+  and is never toggled by any UI or by `setCaptureItemsIncluded` (the backend
+  ignores the roundtrip id if passed, defensively).
+- **No checkbox** in its row; the select-all header checkbox does not affect it.
+- **Filters never hide it and bulk operations never touch it.** It renders
+  pinned in the list regardless of active filters.
+- Not counted in the matrix counters (M / N / filter K-of-M); it is counted in
+  recording progress ("X / Y complete") since it is genuinely recorded.
+
+This matches the intent: the roundtrip is *always in the capture list* but
+*never part of the capture matrix* (the exclusion/filter surface).
 
 ## Backend (native function)
 
@@ -99,13 +116,16 @@ All UI lives in the existing capture-list table region.
 
 **Table rendering (`updateCaptureListDisplay`):**
 - New leftmost **checkbox column**; checked reflects `item.included`.
+- Matrix rows only get a checkbox. The **roundtrip row shows no checkbox** (an
+  em-dash / lock glyph or blank cell) — it cannot be excluded.
 - Header cell holds a **select-all/none checkbox** that toggles `included` on the
-  currently *visible* (filtered) rows.
+  currently *visible* (filtered) **matrix** rows only.
 - Excluded rows get a greyed/`.excluded` style but remain rendered.
-- Count/progress readouts change to include-aware values:
-  - Header gains "**N of M included**" (N = included count, M = total rows).
-  - "X / Y complete" uses **Y = included count** and counts completes among
-    included rows.
+- Count/progress readouts:
+  - Header gains "**N of M included**", where **M = total matrix rows** (excludes
+    the roundtrip) and **N = included matrix rows**.
+  - "X / Y complete" reflects actual recording work: **Y = included matrix rows +
+    1** (the always-recorded roundtrip), and X counts completes among those.
 
 **Filter bar (new, above the table):**
 - One dropdown per control name, each defaulting to `any`, plus the control's
@@ -115,15 +135,13 @@ All UI lives in the existing capture-list table region.
   does not change `included`.
 - A "**Showing K of M (filtered) · clear**" banner appears whenever any filter is
   active, so a stale filter is never mistaken for data loss. "Clear" resets all
-  filters to `any`.
-- The roundtrip row has no control values; it shows whenever no control filter
-  excludes it (i.e. it is hidden as soon as any single-value control filter is
-  active, since it matches no specific value). This is acceptable — roundtrip is
-  toggled directly via its checkbox in the unfiltered view.
+  filters to `any`. (K/M count matrix rows only; the pinned roundtrip row is not
+  counted — see "Roundtrip handling".)
 
 **Bulk buttons (new):**
 - **Include shown** / **Exclude shown**: collect the ids of currently visible
-  (filtered) rows and call `setCaptureItemsIncluded(ids, true|false)`.
+  (filtered) **matrix** rows and call `setCaptureItemsIncluded(ids, true|false)`.
+  The roundtrip row's id is never included in a bulk operation.
 
 **Interaction wiring:**
 - Individual checkbox change → `setCaptureItemsIncluded([id], checked)`.
@@ -132,10 +150,11 @@ All UI lives in the existing capture-list table region.
 **Recording / navigation:**
 - `advanceToNextCapture()` skips rows where `included === false` (in addition to
   the existing pending check) in both the forward and wrap-around loops.
-- Clicking an excluded row still selects it for inspection, but the Record action
-  is **disabled** while the current row is excluded (guard in the record entry
-  path). No excluded row is ever recorded. This upholds "no silent fallbacks" —
-  an excluded row cannot be silently captured.
+- Excluded rows are **not clickable** — they cannot be selected as the current
+  capture at all (the row-click handler ignores excluded rows). Combined with
+  `advanceToNextCapture()` skipping them, an excluded row can never become the
+  current capture and so can never be recorded. Simpler than a record-time guard,
+  and still upholds "no silent recording".
 
 ## Example: the glare 14-of-90 workflow
 
@@ -162,7 +181,11 @@ Given the e2e harness (`e2e/`, drives the webview via `evaluate-js`), verify:
   filtered rows changed and the rest are untouched.
 - **Regeneration reset:** exclude rows, regenerate, confirm all rows return to
   included.
-- **Record guard:** select an excluded row, confirm the Record action is disabled.
+- **Excluded row unclickable:** confirm clicking an excluded row does not make it
+  the current capture.
+- **Roundtrip exemption:** confirm the roundtrip row has no checkbox, is never
+  hidden by any filter, is untouched by "Exclude shown" / select-all, and that
+  passing its id to `setCaptureItemsIncluded(false)` leaves it included.
 
 ## Out of scope (possible later upgrades)
 
