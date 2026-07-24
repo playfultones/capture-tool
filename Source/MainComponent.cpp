@@ -937,16 +937,22 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                 const bool included = static_cast<bool>(args[1]);
                 for (const auto& k : *args[0].getArray())
                     captureControlManager.setExcluded(k.toString(), !included);
-                markProjectDirty();
+                if (!args[0].getArray()->isEmpty())
+                    markProjectDirty();
 
                 // Use getCombinations().size() for totalCount rather than
                 // getTotalCombinationCount(), which clamps at 100000 even when
                 // the product overflows and getCombinations() returns []. Reporting
                 // getCombinations().size() keeps includedCount/totalCount consistent
                 // with the array that getMatrixCombinations returns to JS.
+                // Count in one pass over the same array to avoid a second enumeration.
                 const auto combinations = captureControlManager.getCombinations();
+                int includedCount = 0;
+                for (const auto& combo : combinations)
+                    if (!captureControlManager.isExcluded(combo.key))
+                        ++includedCount;
                 resultObj->setProperty("success", true);
-                resultObj->setProperty("includedCount", captureControlManager.getIncludedCount());
+                resultObj->setProperty("includedCount", includedCount);
                 resultObj->setProperty("totalCount", combinations.size());
                 complete(juce::var(resultObj));
             })
