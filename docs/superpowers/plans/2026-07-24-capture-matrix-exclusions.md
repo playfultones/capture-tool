@@ -117,6 +117,17 @@ In the `private:` section (after `juce::Array<CaptureControl> controls;`) add:
     juce::StringArray excludedKeys;   // canonical keys currently excluded
 ```
 
+Also update the existing inline `clear()` so exclusions do not leak across New
+Project / project loads (both call `clear()`). Change:
+
+```cpp
+    void clear() { controls.clear(); }
+```
+to:
+```cpp
+    void clear() { controls.clear(); excludedKeys.clear(); }
+```
+
 - [ ] **Step 2: Implement the methods in the .cpp**
 
 Append to `CaptureControl.cpp` (after `toVar()`):
@@ -143,8 +154,18 @@ juce::Array<MatrixCombination> CaptureControlManager::getCombinations() const
     if (controls.isEmpty())
         return result;
 
-    const int total = getTotalCombinationCount();
-    if (total == 0 || total > 100000)
+    // Exact product with 64-bit math and early bail-out. getTotalCombinationCount()
+    // CLAMPS at 100000 and returns exactly 100000 when the product overflows it, so
+    // it cannot be used as the guard here — recompute exactly and refuse to
+    // enumerate anything too large to handle interactively (this runs on every edit).
+    juce::int64 total = 1;
+    for (const auto& ctrl : controls)
+    {
+        total *= (juce::int64) ctrl.getValueCount();
+        if (total > 100000)
+            return result;   // too large to enumerate/exclude in the UI
+    }
+    if (total == 0)
         return result;
 
     juce::Array<int> indices;
@@ -348,6 +369,7 @@ The native chooser cannot be driven by the harness, so mirror the `loadProject` 
                     auto jsonString = juce::JSON::toString(projectData, true);
 
                     auto* resultObj = new juce::DynamicObject();
+                    resultObj->setProperty("cancelled", false);
                     if (file.replaceWithText(jsonString))
                     {
                         currentProjectFile = file;
@@ -497,7 +519,7 @@ try {
 
   // Two small controls: 2 x 3 = 6 combinations.
   await call('addCaptureControl', 'Mode', 'discrete', 'Up, Down');
-  await call('addCaptureControl', 'Glare', 'discrete', '0, 5, 10');
+  const glare = await call('addCaptureControl', 'Glare', 'discrete', '0, 5, 10');
 
   let combos = await call('getMatrixCombinations');
   assert.strictEqual(combos.length, 6, 'expected 6 combinations');
@@ -531,7 +553,14 @@ try {
   combos = await call('getMatrixCombinations');
   assert.strictEqual(combos.filter((c) => !c.included).length, 2, 'exclusions survive reload');
 
-  // Stranded-key warning: adding a control strands all prior exclusions.
+  // Key stability: adding a VALUE to an existing control keeps still-valid
+  // exclusions (the excluded Down/0 and Down/10 combos still exist).
+  const upd = await call('updateCaptureControl', glare.id, 'Glare', 'discrete', '0, 5, 10, 15');
+  assert.strictEqual(upd.strandedExcludedCount, 0, 'adding a value strands nothing');
+  combos = await call('getMatrixCombinations');
+  assert.strictEqual(combos.filter((c) => !c.included).length, 2, 'exclusions survive value addition');
+
+  // Stranded-key warning: adding a whole control strands all prior exclusions.
   const add = await call('addCaptureControl', 'Shape', 'discrete', '2, 5');
   assert.ok(add.strandedExcludedCount >= 2, 'adding a control strands prior keys');
   combos = await call('getMatrixCombinations');
@@ -582,7 +611,7 @@ Immediately after the `window.captureControlsState = captureControlsState;` line
 ```javascript
 // Canonical combination key, mirroring C++ CaptureControlManager::makeCombinationKey:
 // "name=value" per control in defined order, joined by the unit-separator char.
-const MATRIX_KEY_SEP = '';
+const MATRIX_KEY_SEP = '\x1f';
 function makeCombinationKey(controlValues) {
     const controls = (window.captureControlsState && window.captureControlsState.controls) || [];
     return controls.map((c) => `${c.name}=${controlValues[c.name] != null ? controlValues[c.name] : ''}`).join(MATRIX_KEY_SEP);
@@ -650,7 +679,6 @@ Keep the existing `<div class="capture-count-display">…</div>` block untouched
 .matrix-combinations-table tbody tr.excluded { opacity: 0.4; }
 .matrix-undo-toast { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; }
 .btn-link { background: none; border: none; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; }
-.hidden { display: none !important; }
 
 /* ---- Capture-list trace-back + staleness ---- */
 .capture-list-included-readout { font-size: 12px; opacity: 0.8; }
@@ -716,26 +744,26 @@ function renderMatrixCombinations() {
     const countEl = document.getElementById('matrix-included-count');
     if (countEl) countEl.textContent = `${included} of ${total} included`;
 
-    // Filter chips (single-select dropdowns).
+    // Filter chips (single-select dropdowns), built via DOM APIs so control
+    // values containing quotes never break an attribute.
     const filterBar = document.getElementById('matrix-filter-bar');
     if (filterBar) {
-        filterBar.innerHTML = controls
-            .map((c) => {
-                const opts = ['<option value="">any</option>']
-                    .concat((c.values || []).map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`))
-                    .join('');
-                const sel = matrixCombinationsState.filters[c.name] || '';
-                return `<label class="matrix-filter-chip">${escapeHtml(c.name)}
-                    <select data-filter-control="${escapeHtml(c.name)}">${opts}</select></label>`;
-            })
-            .join('');
-        filterBar.querySelectorAll('select[data-filter-control]').forEach((sel) => {
-            sel.value = matrixCombinationsState.filters[sel.dataset.filterControl] || '';
+        filterBar.innerHTML = '';
+        for (const c of controls) {
+            const label = document.createElement('label');
+            label.className = 'matrix-filter-chip';
+            label.append(c.name + ' ');
+            const sel = document.createElement('select');
+            sel.append(new Option('any', ''));
+            for (const v of (c.values || [])) sel.append(new Option(v, v));
+            sel.value = matrixCombinationsState.filters[c.name] || '';
             sel.addEventListener('change', () => {
-                matrixCombinationsState.filters[sel.dataset.filterControl] = sel.value;
+                matrixCombinationsState.filters[c.name] = sel.value;
                 renderMatrixCombinations();
             });
-        });
+            label.append(sel);
+            filterBar.append(label);
+        }
     }
 
     // Filter status banner.
@@ -766,7 +794,9 @@ function renderMatrixCombinations() {
         thead.innerHTML =
             '<th></th>' + controls.map((c) => `<th>${escapeHtml(c.name)}</th>`).join('');
 
-    // Body (visible rows only).
+    // Body (visible rows only). Listeners capture the combo object directly by
+    // index into `visible` — no combination key in DOM attributes (keys contain a
+    // 0x1F separator and possibly quotes, which would not survive an attribute).
     const tbody = document.getElementById('matrix-combinations-tbody');
     if (tbody) {
         tbody.innerHTML = visible
@@ -774,14 +804,15 @@ function renderMatrixCombinations() {
                 const cells = controls
                     .map((c) => `<td>${escapeHtml(combo.controlValues[c.name] || '')}</td>`)
                     .join('');
-                return `<tr class="${combo.included ? '' : 'excluded'}" data-combo-key="${escapeHtml(combo.key)}">
+                return `<tr class="${combo.included ? '' : 'excluded'}">
                     <td><input type="checkbox" class="matrix-combo-check" ${combo.included ? 'checked' : ''}></td>
                     ${cells}</tr>`;
             })
             .join('');
-        tbody.querySelectorAll('tr').forEach((row) => {
+        tbody.querySelectorAll('tr').forEach((row, i) => {
+            const combo = visible[i];
             const cb = row.querySelector('.matrix-combo-check');
-            if (cb) cb.addEventListener('change', () => onCombinationCheckboxChange(row.dataset.comboKey, cb.checked));
+            if (cb && combo) cb.addEventListener('change', () => onCombinationCheckboxChange(combo.key, cb.checked));
         });
     }
 
@@ -811,7 +842,7 @@ async function onCombinationCheckboxChange(key, checked) {
 
 - [ ] **Step 3: Refresh combinations + surface stranded warning on every control edit**
 
-In `onControlFieldChange`, `onControlTypeChange`, `onAddControlClick`, and `onRemoveControlClick`, each already does `captureControlsState.controls = result.controls; captureControlsState.totalCaptureCount = result.totalCaptureCount; updateCaptureControlsDisplay();`. Immediately after `updateCaptureControlsDisplay();` in each, add:
+Apply to the **three** handlers that own a `result` and call `updateCaptureControlsDisplay()`: `onControlFieldChange` (~`:674`), `onRemoveControlClick` (~`:726`), and `onAddControlClick` (~`:751`). Do **not** touch `onControlTypeChange` (~`:705`) — it has no `result` and delegates to `onControlFieldChange`, so it is already covered. Immediately after `updateCaptureControlsDisplay();` in each of the three, add:
 
 ```javascript
         if (result.strandedExcludedCount > 0 && typeof showConfirmDialog === 'function') {
@@ -971,14 +1002,22 @@ function updateCaptureListStaleness() {
     const combos = matrixCombinationsState.combinations || [];
 
     // Trace-back readout: included matrix rows vs total, plus roundtrip note.
+    // Clicking scrolls back to the matrix stage (answers "why is X missing?").
     const readout = document.getElementById('capture-list-included-readout');
     if (readout) {
         if (items.length === 0) {
             readout.textContent = '';
+            readout.onclick = null;
+            readout.style.cursor = '';
         } else {
             const total = combos.length;
             const included = combos.filter((c) => c.included).length;
             readout.textContent = `${included} of ${total} combinations included (+ roundtrip)`;
+            readout.style.cursor = 'pointer';
+            readout.title = 'Edit inclusions in the Capture Matrix';
+            readout.onclick = () =>
+                document.querySelector('.capture-controls-container')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
 
@@ -999,7 +1038,11 @@ function updateCaptureListStaleness() {
 
 - [ ] **Step 3: Call it after list and combination changes**
 
-Ensure `updateCaptureListStaleness()` is called at the end of `renderMatrixCombinations` (already added in Task 7 Step 1), at the end of `updateCaptureListDisplay`, and in `generateCaptureList` after `loadMatrixCombinations()`.
+Ensure `updateCaptureListStaleness()` is called:
+- at the end of `renderMatrixCombinations` (already added in Task 7 Step 1);
+- at the end of `updateCaptureListDisplay`, **and immediately before its early `return` in the `count === 0` branch** (~`capture.js:1353-1359`) — otherwise clearing the list leaves a stale banner and readout on screen;
+- at the end of `clearCaptureList` (after the state is reset), for the explicit Clear List button;
+- in `generateCaptureList` after `loadMatrixCombinations()`.
 
 - [ ] **Step 4: Verify (DOM)**
 
@@ -1078,8 +1121,10 @@ At the very top of `generateCaptureList` (before disabling the button), add:
         const ok = await showConfirmDialog(`This will reset ${completed} completed capture${completed !== 1 ? 's' : ''}. Continue?`);
         if (!ok) return;
     }
-    const includedN = (matrixCombinationsState.combinations || []).filter((c) => c.included).length;
-    if (includedN === 0) {
+    // Guard on combinations.length: it is empty until the first loadMatrixCombinations()
+    // resolves, and an empty array must not be read as "0 included" (spurious confirm).
+    const combos = matrixCombinationsState.combinations || [];
+    if (combos.length > 0 && combos.filter((c) => c.included).length === 0) {
         const ok = await showConfirmDialog('0 combinations included — the list will contain only the roundtrip. Continue?');
         if (!ok) return;
     }
@@ -1093,7 +1138,9 @@ cd e2e && nix develop -c node -e "import('./lib.mjs').then(async ({createHarness
   await h.evalJsAsync(\"backend.call('addCaptureControl','Glare','discrete','0, 5')\");
   await h.evalJsAsync('loadMatrixCombinations()');
   await h.evalJsAsync('bulkSetShown(false)');            // 0 included
-  h.evalJs('generateCaptureList()');                     // fire (do not await; dialog blocks)
+  // Fire-and-forget: the dialog blocks completion, so evaluate to undefined
+  // (a pending Promise cannot be serialised out of the bridge) and swallow errors.
+  await h.evalJs('void generateCaptureList()').catch(() => {});
   await sleep(500);
   const visible = await h.evalJs(\"!document.getElementById('app-confirm-overlay').classList.contains('hidden')\");
   console.log('confirm shown for empty generate:', visible); await h.app.quit?.(); process.exit(visible?0:1);
@@ -1155,6 +1202,20 @@ try {
   await h.evalJsAsync('generateCaptureList()');
   const listLen = await h.evalJs('captureListState.items.length');
   assert.strictEqual(listLen, 4, 'expected 4 items (3 included + roundtrip)');
+
+  const staleAfterGen = () =>
+    h.evalJs("document.getElementById('capture-list-stale-banner').classList.contains('hidden')");
+
+  // Right after generate the list matches the selection -> not stale.
+  assert.strictEqual(await staleAfterGen(), true, 'not stale immediately after generate');
+
+  // Excluding the shown region diverges from the generated list -> stale banner shows.
+  await h.evalJsAsync('bulkSetShown(false)');
+  assert.strictEqual(await staleAfterGen(), false, 'stale after selection change');
+
+  // Undo restores the prior selection -> matches the list again -> not stale.
+  await h.evalJsAsync('undoLastBulk()');
+  assert.strictEqual(await staleAfterGen(), true, 'undo restores selection, banner clears');
 
   console.log('PASS: matrix-exclusions-workflow');
 } catch (err) {
