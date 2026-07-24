@@ -656,6 +656,128 @@ function updateCaptureControlsDisplay() {
     }
 }
 
+async function loadMatrixCombinations() {
+    try {
+        const combos = await backend.call('getMatrixCombinations');
+        matrixCombinationsState.combinations = combos || [];
+        // Drop filters that reference controls/values no longer present.
+        const controlNames = new Set((captureControlsState.controls || []).map((c) => c.name));
+        for (const name of Object.keys(matrixCombinationsState.filters))
+            if (!controlNames.has(name)) delete matrixCombinationsState.filters[name];
+        renderMatrixCombinations();
+    } catch (err) {
+        console.error('Failed to load matrix combinations:', err);
+    }
+}
+
+function getVisibleCombinations() {
+    const filters = matrixCombinationsState.filters;
+    return matrixCombinationsState.combinations.filter((combo) =>
+        Object.entries(filters).every(([name, val]) => !val || combo.controlValues[name] === val)
+    );
+}
+
+function renderMatrixCombinations() {
+    const controls = captureControlsState.controls || [];
+    const combos = matrixCombinationsState.combinations;
+
+    // Counts.
+    const total = combos.length;
+    const included = combos.filter((c) => c.included).length;
+    const countEl = document.getElementById('matrix-included-count');
+    if (countEl) countEl.textContent = `${included} of ${total} included`;
+
+    // Filter chips (single-select dropdowns), built via DOM APIs so control
+    // values containing quotes never break an attribute.
+    const filterBar = document.getElementById('matrix-filter-bar');
+    if (filterBar) {
+        filterBar.innerHTML = '';
+        for (const c of controls) {
+            const label = document.createElement('label');
+            label.className = 'matrix-filter-chip';
+            label.append(c.name + ' ');
+            const sel = document.createElement('select');
+            sel.append(new Option('any', ''));
+            for (const v of (c.values || [])) sel.append(new Option(v, v));
+            sel.value = matrixCombinationsState.filters[c.name] || '';
+            sel.addEventListener('change', () => {
+                matrixCombinationsState.filters[c.name] = sel.value;
+                renderMatrixCombinations();
+            });
+            label.append(sel);
+            filterBar.append(label);
+        }
+    }
+
+    // Filter status banner.
+    const anyFilter = Object.values(matrixCombinationsState.filters).some((v) => v);
+    const visible = getVisibleCombinations();
+    const statusEl = document.getElementById('matrix-filter-status');
+    if (statusEl) {
+        statusEl.classList.toggle('hidden', !anyFilter);
+        if (anyFilter)
+            statusEl.innerHTML = `Showing ${visible.length} of ${total} (filtered)<span class="clear-filter" id="matrix-clear-filter">clear</span>`;
+    }
+    const clearEl = document.getElementById('matrix-clear-filter');
+    if (clearEl)
+        clearEl.addEventListener('click', () => {
+            matrixCombinationsState.filters = {};
+            renderMatrixCombinations();
+        });
+
+    // Bulk button labels with live counts.
+    const incBtn = document.getElementById('matrix-include-shown');
+    const excBtn = document.getElementById('matrix-exclude-shown');
+    if (incBtn) incBtn.textContent = `Include ${visible.length} shown`;
+    if (excBtn) excBtn.textContent = `Exclude ${visible.length} shown`;
+
+    // Header.
+    const thead = document.getElementById('matrix-combinations-thead');
+    if (thead)
+        thead.innerHTML =
+            '<th></th>' + controls.map((c) => `<th>${escapeHtml(c.name)}</th>`).join('');
+
+    // Body (visible rows only). Listeners capture the combo object directly by
+    // index into `visible` — no combination key in DOM attributes (keys contain a
+    // 0x1F separator and possibly quotes, which would not survive an attribute).
+    const tbody = document.getElementById('matrix-combinations-tbody');
+    if (tbody) {
+        tbody.innerHTML = visible
+            .map((combo) => {
+                const cells = controls
+                    .map((c) => `<td>${escapeHtml(combo.controlValues[c.name] || '')}</td>`)
+                    .join('');
+                return `<tr class="${combo.included ? '' : 'excluded'}">
+                    <td><input type="checkbox" class="matrix-combo-check" ${combo.included ? 'checked' : ''}></td>
+                    ${cells}</tr>`;
+            })
+            .join('');
+        tbody.querySelectorAll('tr').forEach((row, i) => {
+            const combo = visible[i];
+            const cb = row.querySelector('.matrix-combo-check');
+            if (cb && combo) cb.addEventListener('change', () => onCombinationCheckboxChange(combo.key, cb.checked));
+        });
+    }
+
+    // Defined in Task 9; guard so this works before Task 9 is executed.
+    if (typeof updateCaptureListStaleness === 'function') updateCaptureListStaleness();
+}
+
+async function onCombinationCheckboxChange(key, checked) {
+    try {
+        const res = await backend.call('setCombinationsIncluded', [key], checked);
+        const combo = matrixCombinationsState.combinations.find((c) => c.key === key);
+        if (combo) combo.included = checked;
+        if (res && typeof res.includedCount === 'number') {
+            const countEl = document.getElementById('matrix-included-count');
+            if (countEl) countEl.textContent = `${res.includedCount} of ${res.totalCount} included`;
+        }
+        renderMatrixCombinations();
+    } catch (err) {
+        console.error('Failed to toggle combination:', err);
+    }
+}
+
 /**
  * Attach event listeners to control items
  */
@@ -708,6 +830,13 @@ async function onControlFieldChange(event) {
             captureControlsState.controls = result.controls;
             captureControlsState.totalCaptureCount = result.totalCaptureCount;
             updateCaptureControlsDisplay();
+            if (result.strandedExcludedCount > 0 && typeof showConfirmDialog === 'function') {
+                showConfirmDialog(
+                    `This edit reset the include/exclude selection for ${result.strandedExcludedCount} combination${result.strandedExcludedCount !== 1 ? 's' : ''}.`,
+                    { okOnly: true }
+                );
+            }
+            await loadMatrixCombinations();
         }
     } catch (error) {
         console.error('Failed to update control:', error);
@@ -751,10 +880,17 @@ async function onRemoveControlClick(event) {
             if (window.guideState && window.guideState.hasGuide(controlId)) {
                 window.guideState.removeGuide(controlId);
             }
-            
+
             captureControlsState.controls = result.controls;
             captureControlsState.totalCaptureCount = result.totalCaptureCount;
             updateCaptureControlsDisplay();
+            if (result.strandedExcludedCount > 0 && typeof showConfirmDialog === 'function') {
+                showConfirmDialog(
+                    `This edit reset the include/exclude selection for ${result.strandedExcludedCount} combination${result.strandedExcludedCount !== 1 ? 's' : ''}.`,
+                    { okOnly: true }
+                );
+            }
+            await loadMatrixCombinations();
         }
     } catch (error) {
         console.error('Failed to remove control:', error);
@@ -777,7 +913,14 @@ async function onAddControlClick() {
             captureControlsState.controls = result.controls || [];
             captureControlsState.totalCaptureCount = result.totalCaptureCount || 0;
             updateCaptureControlsDisplay();
-            
+            if (result.strandedExcludedCount > 0 && typeof showConfirmDialog === 'function') {
+                showConfirmDialog(
+                    `This edit reset the include/exclude selection for ${result.strandedExcludedCount} combination${result.strandedExcludedCount !== 1 ? 's' : ''}.`,
+                    { okOnly: true }
+                );
+            }
+            await loadMatrixCombinations();
+
             // Focus the name input of the new control
             const newControlEl = document.querySelector(`[data-control-id="${result.id}"]`);
             if (newControlEl) {
@@ -803,11 +946,12 @@ async function loadCaptureControls() {
     try {
         const controls = await backend.call('getCaptureControls');
         const totalCount = await backend.call('getTotalCaptureCount');
-        
+
         captureControlsState.controls = controls || [];
         captureControlsState.totalCaptureCount = totalCount || 0;
-        
+
         updateCaptureControlsDisplay();
+        loadMatrixCombinations();
     } catch (error) {
         console.error('Failed to load capture controls:', error);
     }
@@ -821,9 +965,10 @@ function initCaptureControls() {
     if (addBtn) {
         addBtn.addEventListener('click', onAddControlClick);
     }
-    
+
     // Load initial state
     loadCaptureControls();
+    loadMatrixCombinations();
 }
 
 //==============================================================================
@@ -1298,14 +1443,15 @@ async function generateCaptureList() {
         
         if (result.success) {
             captureListState.items = result.captureList || [];
-            
+
             // Extract control names from controls state
             captureListState.controlNames = captureControlsState.controls.map(c => c.name);
-            
+
             // Update the display
             updateCaptureListDisplay();
             updateCaptureListButtons();
-            
+            loadMatrixCombinations();
+
             console.log(`Generated ${result.count} capture items`);
             
             // Initialize current capture display with the new list
