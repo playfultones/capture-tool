@@ -532,6 +532,22 @@ const captureControlsState = {
 };
 window.captureControlsState = captureControlsState;
 
+// Canonical combination key, mirroring C++ CaptureControlManager::makeCombinationKey:
+// "name=value" per control in defined order, joined by the unit-separator char.
+const MATRIX_KEY_SEP = '\x1f';
+function makeCombinationKey(controlValues) {
+    const controls = (window.captureControlsState && window.captureControlsState.controls) || [];
+    return controls.map((c) => `${c.name}=${controlValues[c.name] != null ? controlValues[c.name] : ''}`).join(MATRIX_KEY_SEP);
+}
+window.makeCombinationKey = makeCombinationKey;
+
+const matrixCombinationsState = {
+    combinations: [],   // [{ key, controlValues:{name:value}, included }]
+    filters: {},        // controlName -> selected value, or '' for any
+    lastBulkUndo: null,  // { keys:[], included:bool } — prior state for one-level undo
+};
+window.matrixCombinationsState = matrixCombinationsState;
+
 /**
  * Render a single capture control item
  * @param {object} control - { id, name, type, values, valueCount }

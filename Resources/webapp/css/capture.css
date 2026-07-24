@@ -1126,3 +1126,31 @@
     color: var(--text-secondary);
     font-style: italic;
 }
+
+/* ---- Capture matrix combinations table ---- */
+.matrix-combinations { margin-top: 12px; }
+.matrix-combinations-header { display: flex; justify-content: space-between; align-items: baseline; }
+.matrix-included-count { font-variant-numeric: tabular-nums; opacity: 0.85; }
+.matrix-combinations-hint { font-size: 11px; opacity: 0.6; margin: 2px 0 8px; }
+.matrix-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.matrix-filter-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.matrix-bulk-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.matrix-filter-status { font-size: 12px; opacity: 0.75; }
+.matrix-filter-status .clear-filter { margin-left: 6px; cursor: pointer; text-decoration: underline; }
+.matrix-combinations-table-wrapper { max-height: 320px; overflow: auto; border: 1px solid rgba(255,255,255,0.08); }
+.matrix-combinations-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.matrix-combinations-table th, .matrix-combinations-table td { padding: 3px 8px; text-align: left; }
+.matrix-combinations-table tbody tr.excluded { opacity: 0.4; }
+.matrix-undo-toast { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; }
+.btn-link { background: none; border: none; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; }
+
+/* ---- Capture-list trace-back + staleness ---- */
+.capture-list-included-readout { font-size: 12px; opacity: 0.8; }
+.capture-list-stale-banner { font-size: 12px; margin: 4px 0; padding: 4px 8px; border-radius: 4px;
+    background: rgba(255,180,0,0.15); }
+
+/* ---- Confirm dialog ---- */
+.app-confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.app-confirm-box { background: #23262b; padding: 18px 20px; border-radius: 8px; max-width: 380px; }
+.app-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }

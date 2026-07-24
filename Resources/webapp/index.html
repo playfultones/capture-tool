@@ -295,7 +295,35 @@
                             <span class="capture-count-label">Total Captures:</span>
                             <span class="capture-count-value" id="total-capture-count">0</span>
                         </div>
-                        
+
+                        <div class="matrix-combinations" id="matrix-combinations">
+                            <div class="matrix-combinations-header">
+                                <span class="matrix-combinations-title">Combinations</span>
+                                <span class="matrix-included-count" id="matrix-included-count">0 of 0 included</span>
+                            </div>
+                            <div class="matrix-combinations-hint">Exclusions apply on the next Generate List.</div>
+
+                            <div class="matrix-filter-bar" id="matrix-filter-bar"></div>
+
+                            <div class="matrix-bulk-bar">
+                                <span class="matrix-filter-status hidden" id="matrix-filter-status"></span>
+                                <button class="btn-secondary" id="matrix-include-shown">Include shown</button>
+                                <button class="btn-secondary" id="matrix-exclude-shown">Exclude shown</button>
+                            </div>
+
+                            <div class="matrix-combinations-table-wrapper">
+                                <table class="matrix-combinations-table" id="matrix-combinations-table">
+                                    <thead><tr id="matrix-combinations-thead"></tr></thead>
+                                    <tbody id="matrix-combinations-tbody"></tbody>
+                                </table>
+                            </div>
+
+                            <div class="matrix-undo-toast hidden" id="matrix-undo-toast">
+                                <span id="matrix-undo-text"></span>
+                                <button class="btn-link" id="matrix-undo-btn">Undo</button>
+                            </div>
+                        </div>
+
                         <div class="capture-list-actions">
                             <button id="generate-list-btn" class="btn-primary" disabled>
                                 Generate List
