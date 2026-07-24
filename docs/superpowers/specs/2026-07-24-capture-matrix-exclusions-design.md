@@ -2,14 +2,15 @@
 
 **Date:** 2026-07-24
 **Status:** Approved, ready for implementation planning
-**Area:** Capture list (matrix) — `Source/capture/`, `Source/project/`, `Resources/webapp/js/capture.js`, `Source/MainComponent.cpp`
+**Area:** Capture matrix (controls) — `Source/capture/`, `Source/project/`,
+`Resources/webapp/js/capture.js`, `Source/MainComponent.cpp`
 
 ## Problem
 
 The tool generates the full Cartesian product of all capture controls as a flat
 capture list (e.g. Mode{Middle,Up,Down} × Glare{0,3,5,8,10} × Shape{2,5,8} ×
-Gain{min,mid} = 90 rows), plus one roundtrip calibration row. Today every row is
-recorded — there is no way to skip a subset.
+Gain{min,mid} = 90 rows), plus one roundtrip calibration row. Today every
+combination is recorded — there is no way to skip a subset.
 
 As the user hones in on specific pedal features, they increasingly want to record
 *most* of the matrix but **selectively exclude** certain combinations. The real
@@ -17,181 +18,190 @@ target session (`05_glare/probe/README.md`) wants only 14 of the 90 combinations
 structured as a few small sweeps where 1–2 controls vary while the rest stay
 pinned.
 
-The user's first instinct was a tickable 2D grid. That was rejected during
-brainstorming: the matrix is 4-dimensional, so a single 2D grid can only
-represent it by flattening 4 controls onto 2 axes, producing a sparse 90-cell
-grid with arbitrary axis pairing and tri-state "mush" when a hidden control
-varies. It is also the most expensive option to build (a pivot table).
+A single tickable 2D grid was rejected: the matrix is 4-dimensional, so a 2D grid
+can only represent it by flattening 4 controls onto 2 axes (sparse, arbitrary axis
+pairing, tri-state cells) and is the most expensive thing to build.
+
+## Workflow and where exclusions live
+
+Exclusions are a **matrix-design** concern, not a capture-list concern. The user's
+flow is:
+
+1. Define controls (as today).
+2. **Program exclusions** on a combinations table in the matrix stage.
+3. **Generate List** → a clean capture list containing only included combinations
+   (+ the roundtrip row).
+
+Consequences that shape the design:
+
+- The **capture list keeps its current UX** — it is pure recording output. No
+  checkboxes, filters, or greyed rows there. It simply contains fewer rows.
+- Exclusion state lives **upstream of generation**, as a property of the matrix.
+  Regenerating re-derives the list from it, so there is no "re-inclusion trap":
+  "Generate wipes state" only resets the capture list's per-row record status, not
+  the exclusion selection.
 
 ## Chosen approach
 
-Add exclusion to the **existing flat capture-list table**, not a new grid:
+Add a **combinations table** to the matrix stage (alongside the controls list):
 
-1. A per-row **checkbox column** (default checked) to include/exclude individual
-   rows.
+1. A row per generated combination, each with an **include checkbox** (default
+   checked).
 2. **Per-control filter chips** above the table that narrow the visible rows
    (client-side only).
-3. **"Include shown" / "Exclude shown"** bulk buttons that act on the currently
-   filtered rows.
+3. **"Include shown" / "Exclude shown"** bulk buttons acting on the filtered rows.
+4. A "**N of M included**" readout (replaces / augments the existing total-count
+   display).
 
-The full matrix stays visible as the backdrop — excluded rows are greyed, never
-deleted. This makes the common case (skip a handful) a single click, the
-structured case (skip whole regions) a filter-plus-click, and keeps the actual
-recording plan — not a projection of it — always on screen.
-
-This was selected over a 2D pivot grid and over a per-value-toggles + rules-engine
-approach, on grounds of use-speed for the common case, verifiability, and build
-simplicity (see brainstorming analysis; the pivot grid was judged
-"seductive-but-wrong").
+Generate reads the include state and emits only included combinations. This reuses
+the flat-table + filter + bulk pattern validated during brainstorming (chosen over
+a 2D pivot grid and a per-value rules engine for use-speed, verifiability, and
+build simplicity), placed *before* generation so the capture list stays clean.
 
 ## Data model
 
-Single field added to `CaptureItem` (`Source/capture/CaptureList.h`):
+Exclusion is a property of the **matrix**, stored on `CaptureControlManager`
+(`Source/capture/CaptureControl.h/.cpp`) — **not** on `CaptureItem`. `CaptureItem`
+is unchanged.
 
-```cpp
-bool included = true;   // false = present in the matrix but skipped when recording
-```
-
-- Property of each generated matrix row. Defaults to `true`.
-- **The roundtrip row is not a matrix combination and is exempt from exclusion
-  entirely** — it is always recorded and its `included` flag is never toggled by
-  any UI. It always sits in the capture list. See "Roundtrip handling" below.
-- Excluded rows remain in the list; they are never removed from `items`.
+- Store the set of **excluded combination keys**:
+  `juce::StringArray excludedKeys;` (empty = everything included).
+- A **combination key** canonically identifies one product cell as the ordered
+  join of `name=value` pairs across all controls, in the controls' defined order,
+  using a non-printable separator (e.g. `\x1f`) to avoid delimiter collisions.
+  Example: `Mode=Middle\x1fGlare=0\x1fShape=5\x1fGain=min`.
+- New `CaptureControlManager` methods:
+  - `getCombinations()` → enumerates the full product as an ordered list of
+    `{ key, StringPairArray controlValues }`. Factored from the existing
+    Cartesian-product logic so enumeration lives in **one** place (C++), shared
+    with `CaptureListManager::generate`.
+  - `isExcluded(key)`, `setExcluded(key, bool)`, `getIncludedCount()` /
+    `getTotalCombinationCount()`.
+- **Editing controls invalidates only affected keys.** Adding/removing a control,
+  or renaming a control/value, changes the keys of affected combinations; stale
+  excluded keys that no longer match any combination are simply ignored, and any
+  genuinely new combination defaults to included. This matches "default all
+  included" and needs no migration.
 
 ## Persistence
 
-- `CaptureListManager::toVar()` (`CaptureList.cpp`) serializes `included`.
-- `serializeCaptureList()` (`Source/project/ProjectState.cpp`) writes `included`.
-- `deserializeCaptureList()` reads it, **defaulting to `true` when the key is
-  absent**, so existing `.rcp` projects load unchanged (same pattern already used
-  for `isRoundtrip`).
-- No `.rcp` schema version bump needed — the field is additive and back-compatible.
+- Serialize `excludedKeys` in the project's **matrix** section
+  (`ProjectState.cpp`, alongside `serializeControls`).
+- Deserialize with default **empty** when absent, so existing `.rcp` projects load
+  with everything included. Additive and back-compatible — no schema version bump.
+- `CaptureItem` serialization is **unchanged** (no `included` field added).
 
 ## Regeneration behavior (decided)
 
-`generateCaptureList` already rebuilds the list from scratch and resets all
-statuses. It will **also reset all exclusions** (every freshly generated row is
-`included = true`). This is consistent with the existing "generate = fresh list"
-semantics. Consequence: editing controls and regenerating loses prior exclusions.
-Accepted for v1.
+`generateCaptureList` rebuilds the capture list from scratch and resets statuses,
+as today. It now **skips excluded combinations** while doing so. It does **not**
+touch `excludedKeys` — the exclusion selection is matrix state that survives
+generation. (Deferred: preserving/altering the wipe-on-generate behavior for
+statuses is out of scope; current behavior is acceptable.)
+
+## Backend (native functions)
+
+In `MainComponent.cpp`, alongside the existing matrix/list functions:
+
+```
+getMatrixCombinations()
+  -> [ { key: string, controlValues: {name: value, ...}, included: bool }, ... ]
+```
+Enumerates the product via `getCombinations()`, tagging each with its current
+include state. Returns `[]` when no controls are defined. No roundtrip entry (the
+roundtrip is not a matrix combination).
+
+```
+setCombinationsIncluded(keys: string[], included: bool)
+  -> { success: bool, includedCount: int, totalCount: int }
+```
+Updates `excludedKeys` for each key, calls `markProjectDirty()`, returns the new
+counts. Backs both single-checkbox toggles (`keys` of length 1) and bulk
+operations.
+
+```
+generateCaptureList()   // existing — modified
+```
+Skips combinations whose key is in `excludedKeys`; always appends the roundtrip
+row.
 
 ## Roundtrip handling
 
 The roundtrip row is a mandatory calibration reference, **not** a matrix
-combination. It is exempt from the entire exclusion mechanism:
+combination. It therefore:
 
-- Always in the capture list, always recorded — its `included` flag stays `true`
-  and is never toggled by any UI or by `setCaptureItemsIncluded` (the backend
-  ignores the roundtrip id if passed, defensively).
-- **No checkbox** in its row; the select-all header checkbox does not affect it.
-- **Filters never hide it and bulk operations never touch it.** It renders
-  pinned in the list regardless of active filters.
-- Not counted in the matrix counters (M / N / filter K-of-M); it is counted in
-  recording progress ("X / Y complete") since it is genuinely recorded.
+- Never appears in the combinations table and has no include state.
+- Is always appended to the generated capture list and always recorded.
+- Is unaffected by any exclusion UI.
 
-This matches the intent: the roundtrip is *always in the capture list* but
-*never part of the capture matrix* (the exclusion/filter surface).
-
-## Backend (native function)
-
-New native function in `MainComponent.cpp`, alongside the other capture-list
-functions:
-
-```
-setCaptureItemsIncluded(ids: string[], included: bool)
-  -> { success: bool, captureList: <serialized list> }
-```
-
-- Sets `included` on each listed item id via the manager.
-- Calls `markProjectDirty()`.
-- Returns the refreshed serialized list (same shape `setCaptureItemStatus`
-  returns), so the frontend re-renders from authoritative state.
-
-A supporting `CaptureListManager` method (e.g. `setIncluded(id, bool)` mirroring
-the existing `setStatus`) backs it. Bulk operations call it per id.
+This realizes the intent: the roundtrip is *always in the capture list* but *never
+part of the capture matrix*.
 
 ## Frontend (`Resources/webapp/js/capture.js`)
 
-All UI lives in the existing capture-list table region.
+**New: combinations table in the matrix stage.**
+- Rendered from `getMatrixCombinations()`. Refreshed whenever controls change
+  (hook into the existing add/remove/update-control handlers).
+- Columns: **checkbox** (checked = included) + one column per control.
+- **Filter chips** above it: one dropdown per control, default `any`, values drawn
+  from the controls' own value lists. Client-side only — hides non-matching rows,
+  never changes include state. A "**Showing K of M (filtered) · clear**" banner
+  appears while any filter is active.
+- **Bulk buttons:** "Include shown" / "Exclude shown" collect the keys of visible
+  (filtered) rows and call `setCombinationsIncluded(keys, …)`. A header
+  select-all/none checkbox toggles the visible rows.
+- **"N of M included"** readout (M = total combinations, N = included). Reuses /
+  replaces the existing `total-capture-count` element. Keep the existing
+  warning/error thresholds on the total.
+- Individual checkbox change → `setCombinationsIncluded([key], checked)`. Mutations
+  update the count and the row's style from the returned counts (no full re-fetch
+  required for a single toggle).
 
-**Table rendering (`updateCaptureListDisplay`):**
-- New leftmost **checkbox column**; checked reflects `item.included`.
-- Matrix rows only get a checkbox. The **roundtrip row shows no checkbox** (an
-  em-dash / lock glyph or blank cell) — it cannot be excluded.
-- Header cell holds a **select-all/none checkbox** that toggles `included` on the
-  currently *visible* (filtered) **matrix** rows only.
-- Excluded rows get a greyed/`.excluded` style but remain rendered.
-- Count/progress readouts:
-  - Header gains "**N of M included**", where **M = total matrix rows** (excludes
-    the roundtrip) and **N = included matrix rows**.
-  - "X / Y complete" reflects actual recording work: **Y = included matrix rows +
-    1** (the always-recorded roundtrip), and X counts completes among those.
+**Capture list: unchanged.** `updateCaptureListDisplay`, row-click/current-capture
+navigation, progress ("X / Y complete"), and status handling stay as they are.
+After this change the list simply contains included combinations + roundtrip.
 
-**Filter bar (new, above the table):**
-- One dropdown per control name, each defaulting to `any`, plus the control's
-  distinct values. Single-select for v1 (multi-select is a documented later
-  upgrade).
-- Filtering is **client-side only** — it hides non-matching rows from view; it
-  does not change `included`.
-- A "**Showing K of M (filtered) · clear**" banner appears whenever any filter is
-  active, so a stale filter is never mistaken for data loss. "Clear" resets all
-  filters to `any`. (K/M count matrix rows only; the pinned roundtrip row is not
-  counted — see "Roundtrip handling".)
-
-**Bulk buttons (new):**
-- **Include shown** / **Exclude shown**: collect the ids of currently visible
-  (filtered) **matrix** rows and call `setCaptureItemsIncluded(ids, true|false)`.
-  The roundtrip row's id is never included in a bulk operation.
-
-**Interaction wiring:**
-- Individual checkbox change → `setCaptureItemsIncluded([id], checked)`.
-- All mutations re-render from the returned authoritative list.
-
-**Recording / navigation:**
-- `advanceToNextCapture()` skips rows where `included === false` (in addition to
-  the existing pending check) in both the forward and wrap-around loops.
-- Excluded rows are **not clickable** — they cannot be selected as the current
-  capture at all (the row-click handler ignores excluded rows). Combined with
-  `advanceToNextCapture()` skipping them, an excluded row can never become the
-  current capture and so can never be recorded. Simpler than a record-time guard,
-  and still upholds "no silent recording".
+**Large matrices:** the combinations table renders all rows (same approach as the
+current capture list). Virtualization for very large products is out of scope; the
+existing >1000 / >10000 warning thresholds on the count remain the guard.
 
 ## Example: the glare 14-of-90 workflow
 
+In the matrix stage:
 1. Header select-none → **Exclude all**.
 2. Filter `Mode: Middle, Shape: 5, Gain: min` → **Include shown** (the 5 Glare steps).
 3. Filter `Mode: Middle, Glare: 10, Gain: min` → **Include shown** (the Shape sweep).
 4. A couple more region include-clicks for the Gain and Mode variations.
+5. **Generate List** → capture list holds the 14 included combinations + roundtrip.
 
-Each region is one filter set plus one button. A one-off skip is just unticking a
-row.
+A one-off skip is just unticking a combination before generating.
 
 ## Testing
 
-Given the e2e harness (`e2e/`, drives the webview via `evaluate-js`), verify:
+Via the e2e harness (`e2e/`, drives the webview through `evaluate-js`):
 
-- **C++ unit-ish via harness:** generate a list, exclude a subset via
-  `setCaptureItemsIncluded`, confirm serialized `included` flags; save+reload a
-  project and confirm exclusions round-trip; confirm a legacy project (no
-  `included` key) loads with all rows included.
-- **Advance logic:** with a known exclusion set, confirm `advanceToNextCapture()`
-  never lands on an excluded row and that "N of M included" / "X / Y complete"
-  reflect included-only counts.
+- **Enumeration:** with controls defined, `getMatrixCombinations()` returns the
+  full product with stable keys and all `included: true` by default.
+- **Toggle + persistence:** exclude a subset via `setCombinationsIncluded`; confirm
+  counts; save + reload the project and confirm `excludedKeys` round-trips; confirm
+  a legacy project (no `excludedKeys`) loads with everything included.
+- **Generation:** with a known exclusion set, `generateCaptureList` produces only
+  included combinations plus exactly one roundtrip row; excluded combinations are
+  absent from the capture list.
 - **Filter + bulk:** apply a filter, click Include/Exclude shown, confirm only the
-  filtered rows changed and the rest are untouched.
-- **Regeneration reset:** exclude rows, regenerate, confirm all rows return to
-  included.
-- **Excluded row unclickable:** confirm clicking an excluded row does not make it
-  the current capture.
-- **Roundtrip exemption:** confirm the roundtrip row has no checkbox, is never
-  hidden by any filter, is untouched by "Exclude shown" / select-all, and that
-  passing its id to `setCaptureItemsIncluded(false)` leaves it included.
+  filtered combinations changed.
+- **Key stability under edits:** exclude a combination, add a value to an unrelated
+  control, regenerate; confirm the still-existing excluded combination remains
+  excluded and new combinations default to included.
+- **Regeneration:** exclusions persist across `generateCaptureList`; only capture
+  list statuses reset.
+- **Roundtrip exemption:** roundtrip never appears in `getMatrixCombinations`,
+  always appears once in the generated list, and is unaffected by bulk/select-all.
 
 ## Out of scope (possible later upgrades)
 
 - Multi-select filter chips (one filter expressing `Glare ∈ {0,5,10}`).
-- A read-only "pick 2 axes" heat-grid *visualization* (cells shaded by
-  included-count) as a sanity-check view — no editing, ships only if the filtered
-  table count proves insufficient.
-- Preserving exclusions across regeneration (keyed by control-value combination
-  rather than row id).
+- A read-only "pick 2 axes" heat-grid visualization of include density.
+- Virtualized rendering for very large products.
+- Preserving exclusions across control renames (keys are order/name-derived).
+- Revisiting the wipe-on-generate status reset.
