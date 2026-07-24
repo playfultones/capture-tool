@@ -1536,12 +1536,57 @@ function updateCaptureListStaleness() {
     banner.classList.toggle('hidden', !stale);
 }
 
+// Promise-based in-DOM confirm (native dialogs can't be driven by e2e).
+// opts.okOnly => single "OK" button (used for warnings), resolves true.
+function showConfirmDialog(message, opts = {}) {
+    return new Promise((resolve) => {
+        let overlay = document.getElementById('app-confirm-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'app-confirm-overlay';
+            overlay.className = 'app-confirm-overlay hidden';
+            overlay.innerHTML = `
+                <div class="app-confirm-box">
+                    <p class="app-confirm-message" id="app-confirm-message"></p>
+                    <div class="app-confirm-actions">
+                        <button class="btn-secondary" id="app-confirm-cancel">Cancel</button>
+                        <button class="btn-primary" id="app-confirm-ok">Continue</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+        }
+        document.getElementById('app-confirm-message').textContent = message;
+        const cancelBtn = document.getElementById('app-confirm-cancel');
+        const okBtn = document.getElementById('app-confirm-ok');
+        cancelBtn.classList.toggle('hidden', !!opts.okOnly);
+        okBtn.textContent = opts.okOnly ? 'OK' : 'Continue';
+        overlay.classList.remove('hidden');
+        const done = (val) => { overlay.classList.add('hidden'); okBtn.onclick = null; cancelBtn.onclick = null; resolve(val); };
+        okBtn.onclick = () => done(true);
+        cancelBtn.onclick = () => done(false);
+    });
+}
+window.showConfirmDialog = showConfirmDialog;
+
 /**
  * Generate the capture list from the matrix
  */
 async function generateCaptureList() {
     const generateBtn = document.getElementById('generate-list-btn');
-    
+
+    const completed = (captureListState.items || []).filter((i) => i.status === 'complete').length;
+    if (completed > 0) {
+        const ok = await showConfirmDialog(`This will reset ${completed} completed capture${completed !== 1 ? 's' : ''}. Continue?`);
+        if (!ok) return;
+    }
+    // Guard on combinations.length: it is empty until the first loadMatrixCombinations()
+    // resolves, and an empty array must not be read as "0 included" (spurious confirm).
+    const combos = matrixCombinationsState.combinations || [];
+    if (combos.length > 0 && combos.filter((c) => c.included).length === 0) {
+        const ok = await showConfirmDialog('0 combinations included — the list will contain only the roundtrip. Continue?');
+        if (!ok) return;
+    }
+
     try {
         generateBtn.disabled = true;
         generateBtn.textContent = 'Generating...';
