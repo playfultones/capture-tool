@@ -5,24 +5,45 @@
 // staleness banner + undo, and screenshots the matrix panel.
 // Run: nix develop -c node scenarios/matrix-exclusions-workflow.mjs
 import {createHarness, outDir, sleep} from '../lib.mjs';
-import {copyFileSync} from 'fs';
+import {copyFileSync, readFileSync} from 'fs';
+import {createHash} from 'crypto';
 import {join} from 'path';
 import assert from 'assert';
 
 const GLARE_PROJECT = '/Users/bence/Work/spline/captures/glare/glare.rcp';
+const md5 = (p) => createHash('md5').update(readFileSync(p)).digest('hex');
 
 const h = createHarness();
-// Click a real DOM button and give its async click handler time to settle.
-const clickAndSettle = async (id, ms = 500) => {
-  await h.evalJs(`document.getElementById(${JSON.stringify(id)}).click()`);
-  await sleep(ms);
+
+// Poll a JS predicate (evaluated in the webview) until it is truthy. Deterministic
+// replacement for a fixed sleep: a bulk button click dispatches an async handler
+// that round-trips to C++ before mutating state, so we wait for the state, not a
+// guessed duration.
+const waitFor = async (predJs, label, timeoutMs = 6000) => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await h.evalJs(`!!(${predJs})`)) return;
+    await sleep(50);
+  }
+  throw new Error(`waitFor timed out (${label}): ${predJs}`);
 };
-const includedCount = () =>
-  h.evalJs('matrixCombinationsState.combinations.filter((c) => c.included).length');
+// Click a real DOM button, then wait for the expected state to settle.
+const clickAndWait = async (id, predJs, label) => {
+  await h.evalJs(`document.getElementById(${JSON.stringify(id)}).click()`);
+  await waitFor(predJs, label);
+};
+const INCLUDED = 'matrixCombinationsState.combinations.filter((c) => c.included).length';
+const includedCount = () => h.evalJs(INCLUDED);
 const staleHidden = () =>
   h.evalJs("document.getElementById('capture-list-stale-banner').classList.contains('hidden')");
 const setFilters = (obj) =>
   h.evalJs(`(() => { matrixCombinationsState.filters = ${JSON.stringify(obj)}; renderMatrixCombinations(); return true; })()`);
+
+// Region for probe passes 1-5: Mode=Middle, Shape=5, Gain=min(0); Glare unconstrained.
+const REGION = {Mode: 'Middle', Shape: '5', Gain: '0'};
+const inRegion = (cv) => cv.Mode === 'Middle' && cv.Shape === '5' && cv.Gain === '0';
+
+const glareChecksumBefore = md5(GLARE_PROJECT);
 
 try {
   await h.launch();
@@ -40,19 +61,30 @@ try {
 
   // 1) Exclude everything: no filter -> all 90 visible -> click "Exclude shown".
   await setFilters({});
-  await clickAndSettle('matrix-exclude-shown');
+  await clickAndWait('matrix-exclude-shown', `${INCLUDED} === 0`, 'exclude all');
   assert.strictEqual(await includedCount(), 0, 'all 90 excluded');
 
   // 2) Filter to the fit-unblocking region (passes 1-5): Mode=Middle, Shape=5,
   //    Gain=0; Glare unconstrained -> 5 rows. Then click "Include shown".
-  await setFilters({Mode: 'Middle', Shape: '5', Gain: '0'});
+  await setFilters(REGION);
   assert.strictEqual(
     await h.evalJs("document.querySelectorAll('#matrix-combinations-tbody tr').length"),
     5,
     'filtered region shows 5 rows (Glare 0,3,5,8,10)'
   );
-  await clickAndSettle('matrix-include-shown');
+  await clickAndWait('matrix-include-shown', `${INCLUDED} === 5`, 'include region');
   assert.strictEqual(await includedCount(), 5, 'exactly the 5 fit-unblocking passes included');
+  // Identity (not just count): the 5 included are exactly Mode=Middle/Shape=5/Gain=0,
+  // one per distinct Glare step. Guards against a filter that selects the wrong 5.
+  const includedCV = JSON.parse(
+    await h.evalJs('JSON.stringify(matrixCombinationsState.combinations.filter((c) => c.included).map((c) => c.controlValues))')
+  );
+  assert.ok(includedCV.every(inRegion), 'every included combo is Mode=Middle,Shape=5,Gain=0');
+  assert.deepStrictEqual(
+    includedCV.map((cv) => cv.Glare).sort(),
+    ['0', '10', '3', '5', '8'],
+    'included combos span exactly the 5 Glare steps'
+  );
   assert.strictEqual(
     await h.evalJs("document.getElementById('matrix-included-count').textContent"),
     '5 of 90 included',
@@ -70,18 +102,25 @@ try {
 
   // 3) Generate. Normal path (no completed captures, >0 included) -> no confirm.
   await h.evalJsAsync('generateCaptureList()');
-  assert.strictEqual(await h.evalJs('captureListState.items.length'), 6, 'list = 5 passes + roundtrip');
+  const items = JSON.parse(
+    await h.evalJs('JSON.stringify(captureListState.items.map((i) => ({ rt: !!i.isRoundtrip, cv: i.controlValues })))')
+  );
+  assert.strictEqual(items.length, 6, 'list = 5 passes + roundtrip');
+  assert.strictEqual(items.filter((i) => i.rt).length, 1, 'exactly one roundtrip item');
+  const listedPasses = items.filter((i) => !i.rt);
+  assert.strictEqual(listedPasses.length, 5, '5 non-roundtrip passes');
+  assert.ok(listedPasses.every((i) => inRegion(i.cv)), 'generated passes are exactly the fit-unblocking region');
 
   // 4) Staleness UX: right after generate the list matches the selection -> banner hidden.
   assert.strictEqual(await staleHidden(), true, 'not stale immediately after generate');
 
   // Exclude the included region again (diverges from the generated list) -> stale shows.
-  await setFilters({Mode: 'Middle', Shape: '5', Gain: '0'});
-  await clickAndSettle('matrix-exclude-shown');
+  await setFilters(REGION);
+  await clickAndWait('matrix-exclude-shown', `${INCLUDED} === 0`, 'exclude region post-generate');
   assert.strictEqual(await staleHidden(), false, 'stale banner shows after post-generate selection change');
 
   // 5) Undo restores the prior selection -> matches the list again -> banner clears.
-  await clickAndSettle('matrix-undo-btn');
+  await clickAndWait('matrix-undo-btn', `${INCLUDED} === 5`, 'undo');
   assert.strictEqual(await includedCount(), 5, 'undo restored the 5 included');
   assert.strictEqual(await staleHidden(), true, 'undo restores selection, banner clears');
 
@@ -90,6 +129,17 @@ try {
   console.error(`FAIL: ${err && err.stack ? err.stack : err}`);
   process.exitCode = 1;
 } finally {
+  // Real-file safety: the scenario only ever opens/saves the working copy, never
+  // GLARE_PROJECT. Guard against a regression that opens or writes the original.
+  try {
+    const after = md5(GLARE_PROJECT);
+    if (after !== glareChecksumBefore) {
+      console.error(`FAIL: REAL glare.rcp was modified! before=${glareChecksumBefore} after=${after}`);
+      process.exitCode = 1;
+    }
+  } catch (e) {
+    console.error(`glare.rcp integrity check errored: ${e}`);
+  }
   await h.app.quit?.().catch(() => {});
   process.exit(process.exitCode ?? 0);
 }
