@@ -1494,6 +1494,49 @@ function updateCaptureListButtons() {
 }
 
 /**
+ * Update the staleness banner and trace-back readout for the capture list.
+ * Banner: shown when the generated list's combination keys no longer match the
+ * currently-included matrix combinations. Readout: "N of M included (+ roundtrip)".
+ */
+function updateCaptureListStaleness() {
+    const items = captureListState.items || [];
+    const combos = matrixCombinationsState.combinations || [];
+
+    // Trace-back readout: included matrix rows vs total, plus roundtrip note.
+    // Clicking scrolls back to the matrix stage (answers "why is X missing?").
+    const readout = document.getElementById('capture-list-included-readout');
+    if (readout) {
+        if (items.length === 0) {
+            readout.textContent = '';
+            readout.onclick = null;
+            readout.style.cursor = '';
+        } else {
+            const total = combos.length;
+            const included = combos.filter((c) => c.included).length;
+            readout.textContent = `${included} of ${total} combinations included (+ roundtrip)`;
+            readout.style.cursor = 'pointer';
+            readout.title = 'Edit inclusions in the Capture Matrix';
+            readout.onclick = () =>
+                document.querySelector('.capture-controls-container')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    // Staleness: does the generated list match the current inclusion set?
+    const banner = document.getElementById('capture-list-stale-banner');
+    if (!banner) return;
+    if (items.length === 0 || combos.length === 0) {
+        banner.classList.add('hidden');
+        return;
+    }
+    const includedKeys = new Set(combos.filter((c) => c.included).map((c) => makeCombinationKey(c.controlValues)));
+    const listKeys = new Set(items.filter((i) => !i.isRoundtrip).map((i) => makeCombinationKey(i.controlValues)));
+    let stale = includedKeys.size !== listKeys.size;
+    if (!stale) for (const k of includedKeys) if (!listKeys.has(k)) { stale = true; break; }
+    banner.classList.toggle('hidden', !stale);
+}
+
+/**
  * Generate the capture list from the matrix
  */
 async function generateCaptureList() {
@@ -1515,6 +1558,7 @@ async function generateCaptureList() {
             updateCaptureListDisplay();
             updateCaptureListButtons();
             await loadMatrixCombinations();
+            updateCaptureListStaleness();
 
             console.log(`Generated ${result.count} capture items`);
             
@@ -1555,7 +1599,8 @@ async function clearCaptureList() {
         updateCaptureListDisplay();
         updateCaptureListButtons();
         updateCurrentCaptureDisplay();
-        
+        updateCaptureListStaleness();
+
     } catch (error) {
         console.error('Error clearing capture list:', error);
     } finally {
@@ -1581,6 +1626,7 @@ function updateCaptureListDisplay() {
         emptyMessage.classList.remove('hidden');
         countEl.textContent = '0 captures';
         progressTextEl.textContent = '0 / 0 complete';
+        updateCaptureListStaleness();
         return;
     }
     
@@ -1632,9 +1678,11 @@ function updateCaptureListDisplay() {
     
     // Attach click handlers to rows for selecting captures
     attachCaptureListRowHandlers();
-    
+
     // Highlight current capture row
     highlightCurrentCaptureInList();
+
+    updateCaptureListStaleness();
 }
 
 /**
