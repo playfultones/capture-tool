@@ -1096,7 +1096,7 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
         // Returns: { success: boolean, filePath?: string, errorMessage?: string, cancelled?: boolean }
         .withNativeFunction(
             "saveProjectAs",
-            [this](const juce::Array<juce::var>& /*args*/, Completion complete) {
+            [this](const juce::Array<juce::var>& args, Completion complete) {
                 // Determine default directory: prefer output folder, then current project location, then documents
                 juce::File defaultDir;
                 if (outputFolder.exists() && outputFolder.isDirectory())
@@ -1105,7 +1105,43 @@ juce::WebBrowserComponent::Options MainComponent::createWebViewOptions()
                     defaultDir = currentProjectFile.getParentDirectory();
                 else
                     defaultDir = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
-                
+
+#if REFCAP_E2E
+                // e2e automation: save to an explicit path one level below the
+                // chooser. Only honored under the e2e driver (--e2e-test-port).
+                if (E2EBridge::isRequested() && !args.isEmpty() && args[0].isString())
+                {
+                    auto file = juce::File(args[0].toString());
+                    if (!file.hasFileExtension(".rcp") && !file.hasFileExtension(".json"))
+                        file = file.withFileExtension(".rcp");
+
+                    auto projectData = serializeProjectState();
+                    auto jsonString = juce::JSON::toString(projectData, true);
+
+                    auto* resultObj = new juce::DynamicObject();
+                    resultObj->setProperty("cancelled", false);
+                    if (file.replaceWithText(jsonString))
+                    {
+                        currentProjectFile = file;
+                        if (!outputFolder.exists() || !outputFolder.isDirectory())
+                            outputFolder = file.getParentDirectory();
+                        resultObj->setProperty("success", true);
+                        resultObj->setProperty("filePath", file.getFullPathName());
+                        resultObj->setProperty("fileName", file.getFileName());
+                        resultObj->setProperty("outputFolderPath", outputFolder.getFullPathName());
+                    }
+                    else
+                    {
+                        resultObj->setProperty("success", false);
+                        resultObj->setProperty("errorMessage", "Failed to write project file");
+                    }
+                    complete(juce::var(resultObj));
+                    return;
+                }
+#else
+                juce::ignoreUnused(args);
+#endif
+
                 // Create file chooser for saving project
                 fileChooser = std::make_unique<juce::FileChooser>(
                     "Save Project As",
@@ -1964,8 +2000,13 @@ juce::var MainComponent::serializeProjectState() const
     projectObj->setProperty("captureSettings", ProjectSerializer::serializeCaptureSettings(captureSettings));
     
     //--------------------------------------------------------------------------
-    // Matrix (Controls) - use ProjectSerializer helper
-    projectObj->setProperty("matrix", ProjectSerializer::serializeControls(captureControlManager.getControls()));
+    // Matrix (Controls + exclusions) - use ProjectSerializer helper, then attach
+    // the matrix-level excludedKeys set.
+    auto matrixVar = ProjectSerializer::serializeControls(captureControlManager.getControls());
+    if (auto* matrixObj = matrixVar.getDynamicObject())
+        matrixObj->setProperty("excludedKeys",
+                               ProjectSerializer::stringArrayToVar(captureControlManager.getExcludedKeys()));
+    projectObj->setProperty("matrix", matrixVar);
     
     //--------------------------------------------------------------------------
     // Captures (List with status) - use ProjectSerializer helper
@@ -2149,9 +2190,18 @@ LoadProjectResult MainComponent::deserializeProjectState(const juce::var& projec
                     }
                 }
             }
+
+            // Restore matrix-level exclusions (empty for legacy projects).
+            juce::StringArray excluded;
+            auto excludedVar = matrix->getProperty("excludedKeys");
+            if (auto* excludedArray = excludedVar.getArray())
+                for (const auto& v : *excludedArray)
+                    excluded.add(v.toString());
+            captureControlManager.setExcludedKeys(excluded);
+            captureControlManager.pruneStrandedKeys();
         }
     }
-    
+
     //--------------------------------------------------------------------------
     // Captures (List with status) - use ProjectSerializer helper with ID generator
     captureListManager.clear();
