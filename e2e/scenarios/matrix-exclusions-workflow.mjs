@@ -59,6 +59,12 @@ try {
     'count readout reflects 5 of 90'
   );
 
+  // Dismiss the startup modal before screenshotting. It stays visually open
+  // because the known getRecordingTailMs hang stops handleStartupOpenProject
+  // from reaching hideStartupModal(); the project itself loaded fine.
+  await h.evalJs(
+    "(() => { document.getElementById('startup-modal')?.classList.add('hidden'); document.body.classList.remove('modal-open'); return true; })()"
+  );
   // Screenshot the matrix panel with the filtered/included region visible.
   await h.nativeScreenshot('matrix-exclusions.png');
 
