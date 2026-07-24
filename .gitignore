@@ -31,3 +31,4 @@ CLAUDE.md
 # Release scripts + signing config (internal only)
 scripts/
 .env
+.superpowers/
