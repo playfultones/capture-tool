@@ -162,10 +162,26 @@ async function refreshAllUIState() {
         }
         updateCalibrationStatus();
         
-        // Reload recording tail
-        recordingTailMs = await backend.call('getRecordingTailMs');
-        document.getElementById('recording-tail').value = String(recordingTailMs);
-        
+        // NOTE: there used to be a "reload recording tail" step here, calling
+        // backend.call('getRecordingTailMs'). It was removed 2026-07-26 because it
+        // HUNG FOREVER and silently truncated the rest of this function.
+        //
+        // The global recording tail is vestigial on every side: no C++ function of
+        // that name is registered (see createWebViewOptions), there is no
+        // #recording-tail element in the HTML, and serializeProjectState says
+        // "tailMs no longer stored here, it's per-signal" and writes a hardcoded
+        // 500. Tail is per reference signal now (ReferenceSignal::tailMs, set via
+        // setReferenceSignalTail).
+        //
+        // Because backend.call had no timeout, awaiting an unregistered name never
+        // settled, so output folder state, capture controls, the capture list, the
+        // current-capture display, the reference-signal UI and the visual guides
+        // below were never restored on project load — the "GUI not fully populated
+        // when reloading a saved session" symptom. The project data itself
+        // deserialised correctly the whole time; only this refresh died.
+        // backend.call now rejects on timeout so a future unregistered name is
+        // loud instead of invisible.
+
         // Reload output folder state
         await loadOutputFolderState();
         
@@ -262,11 +278,9 @@ async function resetUIToDefaults() {
     if (folderPathEl) folderPathEl.textContent = 'No folder selected';
     if (folderStatusEl) folderStatusEl.textContent = '';
     
-    // Reset recording tail to default
-    recordingTailMs = 500;
-    const tailSelect = document.getElementById('recording-tail');
-    if (tailSelect) tailSelect.value = '500';
-    
+    // (No global recording-tail reset: tail is per reference signal now. See the
+    // note in refreshAllUIState.)
+
     // Clear visual guide state if module is loaded
     if (typeof clearGuideState === 'function') {
         clearGuideState();
