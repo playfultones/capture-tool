@@ -83,22 +83,29 @@ function wavLevelDbfs(path) {
   }
   if (dataStart < 0) fail(`${path}: no data chunk`);
 
+  // 16, 24 and 32-bit are all accepted: captures made before 2026-07-26 are
+  // 16-bit (the recorder hardcoded it), newer ones are 24-bit.
   const bytes = bitsPerSample / 8;
-  if (bytes !== 3 && bytes !== 4) fail(`${path}: unexpected ${bitsPerSample}-bit`);
-  const full = bytes === 3 ? 8388608 : 2147483648;
+  if (![2, 3, 4].includes(bytes)) fail(`${path}: unexpected ${bitsPerSample}-bit`);
+  const full = Math.pow(2, bitsPerSample - 1);
   const n = Math.floor(Math.min(dataLen, buf.length - dataStart) / bytes);
 
   let sum = 0;
   let peak = 0;
   for (let i = 0; i < n; ++i) {
     const off = dataStart + i * bytes;
-    const v = bytes === 3 ? buf.readIntLE(off, 3) / full : buf.readInt32LE(off) / full;
+    const v = buf.readIntLE(off, bytes) / full;
     sum += v * v;
     const a = Math.abs(v);
     if (a > peak) peak = a;
   }
   const db = (x) => (x > 0 ? 20 * Math.log10(x) : -Infinity);
-  return {frames: n, rmsDb: db(Math.sqrt(sum / Math.max(n, 1))), peakDb: db(peak)};
+  return {
+    frames: n,
+    bitsPerSample,
+    rmsDb: db(Math.sqrt(sum / Math.max(n, 1))),
+    peakDb: db(peak),
+  };
 }
 
 const h = createHarness();
@@ -108,7 +115,9 @@ try {
   const expected = JSON.parse(readFileSync(RCP, 'utf8'));
 
   log(`mode=${MODE}  rcp=${RCP}`);
-  await h.launch(['--e2e-test-port=0']);
+  // No args: AppConnection.launch() appends --e2e-test-port=<chosen port> itself
+  // (app-connection.js:77). Passing one here would be a second, conflicting flag.
+  await h.launch();
   await h.waitForAppReady();
   log('app ready, pid', h.state.pid);
 
@@ -136,11 +145,14 @@ try {
   if (Number(sr) !== want.sampleRate)
     fail(`sample rate is ${sr}, project asked for ${want.sampleRate}`);
 
-  const signals = await h.call('getReferenceSignals');
+  // getReferenceSignals returns the whole panel state, not a bare array:
+  // {signals, selectedId, isPlaying, isLooping}.
+  const signalState = await h.call('getReferenceSignals');
+  const signals = signalState?.signals ?? [];
   const got = Array.isArray(signals) ? signals.length : 0;
   const wantN = expected.referenceSignals.length;
   if (got !== wantN) {
-    const gotNames = new Set((signals ?? []).map((s) => s.fileName));
+    const gotNames = new Set(signals.map((s) => s.fileName));
     const missing = expected.referenceSignals
       .map((s) => s.fileName)
       .filter((n) => !gotNames.has(n));
@@ -173,7 +185,7 @@ try {
       `(${list.length - items.length} roundtrip skipped)`
   );
   for (const it of items)
-    log(`  item ${it.id} settings=${JSON.stringify(it.settings ?? {})}`);
+    log(`  item ${it.id} settings=${JSON.stringify(it.controlValues ?? {})}`);
 
   if (MODE === 'preflight') {
     await h.nativeScreenshot('glare-preflight.png');
@@ -205,7 +217,7 @@ try {
         if (h.state.exit) fail(`app exited mid-capture: ${JSON.stringify(h.state.exit)}`);
         const now = await h.call('getCaptureList');
         const cur = (now ?? []).find((it) => it.id === item.id);
-        const done = (cur?.outputFiles ?? []).length;
+        const done = (cur?.outputFilePaths ?? []).length;
         if (done !== lastSeen) {
           log(`  ${done}/${expected.referenceSignals.length} signals captured`);
           lastSeen = done;
@@ -221,7 +233,7 @@ try {
 
     // ── Prove it is not silence ────────────────────────────────────
     const finalList = await h.call('getCaptureList');
-    const files = (finalList ?? []).flatMap((it) => it.outputFiles ?? []);
+    const files = (finalList ?? []).flatMap((it) => it.outputFilePaths ?? []);
     log(`${files.length} file(s) written to ${folder.path}`);
 
     let silent = 0;

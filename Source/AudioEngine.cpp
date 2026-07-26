@@ -831,8 +831,18 @@ AudioEngine::startRecording(const juce::File &outputFile) {
     return result;
   }
 
-  // Use the ThreadedWavWriter module
-  auto result = wavWriter.start(outputFile, currentSampleRate, 1, 16);
+  // 24-bit, not 16. This tool captures measurement data, not mixes: the Glare
+  // probe staircases step down to -59 dBFS and the analysis reads harmonics tens
+  // of dB below that. 16-bit puts the quantisation floor around -96 dBFS, so the
+  // lowest staircase steps only had ~37 dB of usable range above it and any claim
+  // deeper than that was measuring the recorder rather than the pedal. 24-bit
+  // moves the floor to about -144 dBFS for the cost of 50% more disk.
+  //
+  // Reference signals are already 24-bit; only the recording side was 16.
+  // Captures made before 2026-07-26 are 16-bit — the difference is a noise floor,
+  // not a level or transfer change, so old and new captures stay directly
+  // comparable.
+  auto result = wavWriter.start(outputFile, currentSampleRate, 1, 24);
 
   if (result.success) {
     DBG("AudioEngine: Recording started to " + outputFile.getFullPathName());
