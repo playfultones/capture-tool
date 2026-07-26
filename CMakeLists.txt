@@ -141,3 +141,37 @@ add_custom_command(TARGET ReferenceCapturer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${WEBAPP_SOURCE_DIR}" "${WEBAPP_DEST_DIR}"
     COMMENT "Copying webapp resources to bundle"
 )
+
+#==============================================================================
+# Keep the build-folder bundle's code-signing IDENTITY stable across rebuilds.
+#
+# MUST BE THE LAST POST_BUILD COMMAND. CMake runs POST_BUILD commands in
+# declaration order, and the webapp copy above writes into Contents/Resources,
+# which the signature seals — signing before it would leave an invalid signature
+# on any build where a webapp file actually changed. (It would appear to work
+# whenever the JS was untouched, since copy_directory rewrites identical bytes
+# and the resource hashes still match. A rebuild-after-JS-edit is what breaks.)
+#
+# Why sign at all here: the linker's default ad-hoc signature identifies the app
+# as "Reference Capturer" (flags: adhoc,linker-signed) rather than by its bundle
+# id. macOS TCC keys a microphone grant to the app's identity, so every rebuild
+# produced a differently-identified binary and the mic permission had to be
+# granted again. An ungranted mic does NOT raise an error — CoreAudio input
+# silently returns zeros, which in a capture tool means a whole session of
+# digital silence that looks like a successful run.
+#
+# Re-signing ad-hoc with the real bundle id plus the JUCE-generated entitlements
+# reproduces the identity the previously-granted build had. No hardened runtime
+# here — the build-folder copy is exempt, see the note on the target above.
+# scripts/sign-app.sh replaces this with the Developer ID signature for dist.
+if(APPLE)
+    add_custom_command(TARGET ReferenceCapturer POST_BUILD
+        COMMAND codesign --force --sign - --timestamp=none
+                --identifier "com.playfultones.referencecapturer"
+                --entitlements
+                "${CMAKE_CURRENT_BINARY_DIR}/ReferenceCapturer_artefacts/JuceLibraryCode/ReferenceCapturer.entitlements"
+                "$<TARGET_BUNDLE_DIR:ReferenceCapturer>"
+        COMMAND codesign --verify --verbose=1 "$<TARGET_BUNDLE_DIR:ReferenceCapturer>"
+        COMMENT "Ad-hoc re-signing with the bundle identifier (stable TCC identity)"
+        VERBATIM)
+endif()
