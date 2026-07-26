@@ -121,24 +121,45 @@ export function createHarness({appPath = defaultAppPath} = {}) {
   }
 
   async function openProject(path) {
-    // KNOWN APP BUG: refreshAllUIState() hangs on backend.call('getRecordingTailMs'),
-    // a native function that does not exist in C++ — the promise never resolves,
-    // so everything after it (output folder, capture controls, capture list)
-    // never refreshes. Until that's fixed, give the flow a short grace period,
-    // then verify the load via DOM and warn loudly.
-    try {
-      await evalJsAsync(`handleStartupOpenProject(${JSON.stringify(path)})`, 8000);
-    } catch (err) {
-      if (!String(err).includes('timed out')) throw err;
-      console.warn(
-        `[harness] open-project promise did not resolve (known app bug: missing getRecordingTailMs native fn) — verifying via DOM`
-      );
-    }
+    // The 8 s grace period that used to live here is gone: refreshAllUIState()
+    // hung forever on backend.call('getRecordingTailMs'), an unregistered native
+    // function, so everything after it (output folder, capture controls, capture
+    // list) never refreshed. Both the stale call and the missing timeout are
+    // fixed, so this should now resolve normally — if it starts timing out again,
+    // that is a real regression and should not be papered over.
+    await evalJsAsync(`handleStartupOpenProject(${JSON.stringify(path)})`, 30000);
+
     const name = await evalJs(`document.getElementById('project-name')?.textContent`);
     const expected = path.split('/').pop();
     if (name !== expected)
       throw new Error(`project did not load: UI shows '${name}', expected '${expected}'`);
     return name;
+  }
+
+  // Invoke a registered C++ native function and await its result. This is the
+  // primary way to drive the app headlessly — it bypasses the DOM entirely, so
+  // it never depends on UI wiring and never opens a modal chooser.
+  async function call(name, ...args) {
+    const argList = args.map((a) => JSON.stringify(a)).join(', ');
+    return evalJsAsync(
+      `backend.call(${JSON.stringify(name)}${argList ? ', ' + argList : ''})`,
+      45000
+    );
+  }
+
+  // Load a project by path through the bridge's chooser bypass, skipping the
+  // startup-modal flow entirely. Preferred for unattended runs: no NSOpenPanel,
+  // and no dependency on the UI having refreshed.
+  //
+  // deserializeProjectState DROPS THINGS SILENTLY — audioSettings if the device
+  // name is not enumerated, any reference signal that is missing or whose sample
+  // rate differs from the project's, and outputFolder if the directory does not
+  // already exist. So callers must verify the loaded state by reading it back
+  // (getAudioState / getReferenceSignals / getOutputFolderState), never by
+  // assuming the load did what the file said.
+  async function loadProjectDirect(path) {
+    if (!(await call('isAudioInitialized'))) await call('initializeAudio');
+    return call('loadProject', path);
   }
 
   // Select an input/output device the way a user would: set the dropdown and
@@ -182,6 +203,8 @@ export function createHarness({appPath = defaultAppPath} = {}) {
     nativeScreenshot,
     newProject,
     openProject,
+    call,
+    loadProjectDirect,
     selectDevice,
     listDevices,
   };
